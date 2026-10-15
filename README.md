@@ -58,6 +58,10 @@ npm run build            # genera frontend/dist con Vite
 npm start                # levanta el backend (Express) tal cual
 ```
 
+## Frontend
+
+La SPA (`frontend/`) es una página base de **punto de venta**: lista los productos desde `GET /api/products`, permite agregarlos a una cuenta (carrito en memoria) con control de cantidad, y muestra el total. El botón "Cobrar" solo vacía el carrito — no hay órdenes persistidas ni pagos todavía; es un punto de partida minimalista para seguir construyendo.
+
 ## Endpoints de ejemplo
 
 - `GET /api/health` — estado de la API y de la conexión a MongoDB
