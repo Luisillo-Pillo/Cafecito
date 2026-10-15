@@ -60,12 +60,18 @@ npm start                # levanta el backend (Express) tal cual
 
 ## Frontend
 
-La SPA (`frontend/`) es una página base de **punto de venta**: lista los productos desde `GET /api/products`, permite agregarlos a una cuenta (carrito en memoria) con control de cantidad, y muestra el total. El botón "Cobrar" solo vacía el carrito — no hay órdenes persistidas ni pagos todavía; es un punto de partida minimalista para seguir construyendo.
+La SPA (`frontend/`) tiene dos vistas (sin librería de ruteo, solo un switch simple en `App.jsx`):
+
+- **Punto de venta**: tarjetas de producto (con ícono según el tipo de bebida/alimento) que se pueden buscar por nombre; al seleccionarlas se suman a una cuenta (carrito en memoria) con contador de artículos, cantidad por producto y total. Para cobrar hay que seleccionar o registrar un cliente (nombre, correo, teléfono); el botón "Cobrar" registra la venta (`POST /api/orders`) y vacía el carrito.
+- **Clientes**: lista y busca clientes, permite registrar uno nuevo, y muestra el historial de compras de cada uno.
 
 ## Endpoints de ejemplo
 
 - `GET /api/health` — estado de la API y de la conexión a MongoDB
-- `GET/POST /api/products`, `GET/PUT/DELETE /api/products/:id` — CRUD de ejemplo (colección `products`)
+- `GET/POST /api/products`, `GET/PUT/DELETE /api/products/:id` — CRUD de productos (colección `products`)
+- `GET/POST /api/customers`, `GET/PUT/DELETE /api/customers/:id` — CRUD de clientes (colección `customers`); `GET /api/customers?search=texto` filtra por nombre/correo/teléfono
+- `GET /api/customers/:id/orders` — historial de compras de un cliente
+- `GET/POST /api/orders` — listar o registrar ventas (colección `orders`); el total se calcula en el servidor a partir de los precios actuales de los productos
 
 ## Notas sobre MongoDB Atlas
 

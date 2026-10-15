@@ -5,6 +5,8 @@ const morgan = require("morgan");
 
 const healthRoutes = require("./routes/health.routes");
 const productRoutes = require("./routes/product.routes");
+const customerRoutes = require("./routes/customer.routes");
+const orderRoutes = require("./routes/order.routes");
 
 function createApp() {
   const app = express();
@@ -20,6 +22,8 @@ function createApp() {
 
   app.use("/api", healthRoutes);
   app.use("/api/products", productRoutes);
+  app.use("/api/customers", customerRoutes);
+  app.use("/api/orders", orderRoutes);
 
   // 404
   app.use((_req, res) => {
