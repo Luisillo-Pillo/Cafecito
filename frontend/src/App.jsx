@@ -1,6 +1,7 @@
 import { useState } from "react";
 import Pos from "./pages/Pos";
 import Customers from "./pages/Customers";
+import logo from "./assets/products/americano.svg";
 
 function App() {
   const [view, setView] = useState("pos");
@@ -8,7 +9,10 @@ function App() {
   return (
     <div className="pos">
       <header className="pos-header">
-        <h1>☕ Cafecito</h1>
+        <h1>
+          <img src={logo} alt="Cafecito" className="pos-logo" />
+          Cafecito
+        </h1>
         <nav className="pos-nav">
           <button
             className={view === "pos" ? "is-active" : ""}

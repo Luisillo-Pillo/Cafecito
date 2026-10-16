@@ -4,6 +4,7 @@ const orderItemSchema = new Schema(
   {
     product: { type: Schema.Types.ObjectId, ref: "Product", required: true },
     name: { type: String, required: true },
+    size: { type: String }, // solo presente cuando el producto es una bebida
     price: { type: Number, required: true, min: 0 },
     qty: { type: Number, required: true, min: 1 },
   },

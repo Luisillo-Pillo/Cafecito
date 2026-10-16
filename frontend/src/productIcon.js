@@ -1,20 +1,44 @@
 import { normalize } from "./utils";
 
 // Reglas de palabras clave más específicas primero, para que un nombre como
-// "Pastel de chocolate" tome el ícono de postre antes que el de chocolate caliente.
+// "Pastel de zanahoria" tome el ícono de zanahoria antes que el genérico de pastel,
+// o "Chai Latte" el de té antes que el genérico de café.
 const KEYWORD_ICONS = [
+  { keywords: ["zanahoria"], icon: "🥕" },
   { keywords: ["pastel", "cake"], icon: "🍰" },
+  { keywords: ["muffin"], icon: "🧁" },
+  { keywords: ["brownie"], icon: "🍫" },
+  { keywords: ["concha"], icon: "🍞" },
   { keywords: ["galleta"], icon: "🍪" },
+  { keywords: ["bagel"], icon: "🥯" },
   { keywords: ["croissant"], icon: "🥐" },
+  { keywords: ["chapata"], icon: "🥪" },
   { keywords: ["pan"], icon: "🥐" },
   { keywords: ["sandwich", "sándwich"], icon: "🥪" },
   { keywords: ["papas", "fritas"], icon: "🍟" },
   { keywords: ["agua"], icon: "💧" },
   { keywords: ["jugo", "naranja", "limonada"], icon: "🧃" },
   { keywords: ["chocolate caliente"], icon: "🍫" },
-  { keywords: ["frappe", "frappé", "smoothie", "helado"], icon: "🥤" },
-  { keywords: ["te chai", "té chai", "chai", "infusion", "infusión"], icon: "🍵" },
-  { keywords: ["capuchino", "cappuccino", "latte", "espresso", "americano", "cafe", "café"], icon: "☕" },
+  {
+    keywords: ["horchata", "cold brew", "frappe", "frappé", "smoothie", "helado"],
+    icon: "🥤",
+  },
+  { keywords: ["matcha", "tisana", "te chai", "té chai", "chai", "infusion", "infusión"], icon: "🍵" },
+  {
+    keywords: [
+      "capuchino",
+      "cappuccino",
+      "latte",
+      "espresso",
+      "macchiato",
+      "mocha",
+      "americano",
+      "flat white",
+      "cafe",
+      "café",
+    ],
+    icon: "☕",
+  },
 ];
 
 const CATEGORY_ICONS = {

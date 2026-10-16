@@ -4,3 +4,9 @@ export function normalize(text) {
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "");
 }
+
+export function slugify(text) {
+  return normalize(text)
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
