@@ -133,7 +133,12 @@ function Customers() {
                   <div className="pos-cart-item-info">
                     <span>{dateFormat.format(new Date(order.createdAt))}</span>
                     <span className="pos-cart-item-price">
-                      {order.items.map((item) => `${item.name} x${item.qty}`).join(", ")}
+                      {order.items
+                        .map(
+                          (item) =>
+                            `${item.name}${item.size ? ` (${item.size})` : ""} x${item.qty}`
+                        )
+                        .join(", ")}
                     </span>
                   </div>
                   <strong>{currency.format(order.total)}</strong>

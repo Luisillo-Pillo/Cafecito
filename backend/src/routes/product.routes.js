@@ -1,14 +1,28 @@
 const { Router } = require("express");
 const Product = require("../models/Product");
+const Order = require("../models/Order");
 const { asyncHandler } = require("../middleware/asyncHandler");
 
 const router = Router();
 
-// GET /api/products - listar
+// GET /api/products - listar, ordenados por popularidad (unidades vendidas)
 router.get(
   "/",
   asyncHandler(async (_req, res) => {
-    const products = await Product.find().sort({ createdAt: -1 });
+    const sales = await Order.aggregate([
+      { $unwind: "$items" },
+      { $group: { _id: "$items.product", unitsSold: { $sum: "$items.qty" } } },
+    ]);
+    const unitsSoldByProduct = new Map(sales.map((s) => [String(s._id), s.unitsSold]));
+
+    const products = await Product.find();
+    products.sort((a, b) => {
+      const soldA = unitsSoldByProduct.get(String(a._id)) ?? 0;
+      const soldB = unitsSoldByProduct.get(String(b._id)) ?? 0;
+      if (soldB !== soldA) return soldB - soldA;
+      return a.name.localeCompare(b.name);
+    });
+
     res.json(products);
   })
 );

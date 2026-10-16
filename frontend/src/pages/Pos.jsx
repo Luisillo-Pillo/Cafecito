@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../api";
 import CustomerForm from "../components/CustomerForm";
 import { getProductIcon } from "../productIcon";
+import { getProductImage } from "../productImages";
 import { normalize } from "../utils";
 
 const currency = new Intl.NumberFormat("es-MX", {
@@ -9,11 +10,27 @@ const currency = new Intl.NumberFormat("es-MX", {
   currency: "MXN",
 });
 
+function cartKey(productId, size) {
+  return `${productId}::${size ?? ""}`;
+}
+
+function ProductVisual({ product }) {
+  const image = getProductImage(product);
+  if (image) {
+    return <img src={image} alt="" className="pos-card-image" />;
+  }
+  return (
+    <span className="pos-card-icon" aria-hidden="true">
+      {getProductIcon(product)}
+    </span>
+  );
+}
+
 function Pos() {
   const [products, setProducts] = useState([]);
   const [productsStatus, setProductsStatus] = useState("loading"); // loading | ready | error
   const [productQuery, setProductQuery] = useState("");
-  const [cart, setCart] = useState([]); // [{ product, qty }]
+  const [cart, setCart] = useState([]); // [{ product, size, unitPrice, qty }]
 
   const [customerQuery, setCustomerQuery] = useState("");
   const [customerMatches, setCustomerMatches] = useState([]);
@@ -46,24 +63,30 @@ function Pos() {
     return () => clearTimeout(timeout);
   }, [customerQuery, selectedCustomer]);
 
-  const addToCart = (product) => {
+  const addToCart = (product, size, unitPrice) => {
     setCheckoutMessage(null);
     setCart((prev) => {
-      const existing = prev.find((item) => item.product._id === product._id);
+      const existing = prev.find(
+        (item) => item.product._id === product._id && item.size === size
+      );
       if (existing) {
         return prev.map((item) =>
-          item.product._id === product._id ? { ...item, qty: item.qty + 1 } : item
+          item.product._id === product._id && item.size === size
+            ? { ...item, qty: item.qty + 1 }
+            : item
         );
       }
-      return [...prev, { product, qty: 1 }];
+      return [...prev, { product, size, unitPrice, qty: 1 }];
     });
   };
 
-  const changeQty = (productId, delta) => {
+  const changeQty = (productId, size, delta) => {
     setCart((prev) =>
       prev
         .map((item) =>
-          item.product._id === productId ? { ...item, qty: item.qty + delta } : item
+          item.product._id === productId && item.size === size
+            ? { ...item, qty: item.qty + delta }
+            : item
         )
         .filter((item) => item.qty > 0)
     );
@@ -77,7 +100,7 @@ function Pos() {
   };
 
   const total = useMemo(
-    () => cart.reduce((sum, item) => sum + item.product.price * item.qty, 0),
+    () => cart.reduce((sum, item) => sum + item.unitPrice * item.qty, 0),
     [cart]
   );
 
@@ -89,9 +112,9 @@ function Pos() {
     return products.filter((product) => normalize(product.name).includes(q));
   }, [products, productQuery]);
 
-  const cartQtyByProduct = useMemo(() => {
+  const cartQtyByKey = useMemo(() => {
     const map = new Map();
-    cart.forEach((item) => map.set(item.product._id, item.qty));
+    cart.forEach((item) => map.set(cartKey(item.product._id, item.size), item.qty));
     return map;
   }, [cart]);
 
@@ -104,7 +127,11 @@ function Pos() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           customerId: selectedCustomer._id,
-          items: cart.map(({ product, qty }) => ({ productId: product._id, qty })),
+          items: cart.map(({ product, size, qty }) => ({
+            productId: product._id,
+            qty,
+            ...(size && { size }),
+          })),
         }),
       });
       setCart([]);
@@ -120,14 +147,6 @@ function Pos() {
   return (
     <main className="pos-main">
       <section className="pos-products">
-        <input
-          type="text"
-          className="pos-search"
-          placeholder="Buscar producto por nombre..."
-          value={productQuery}
-          onChange={(e) => setProductQuery(e.target.value)}
-        />
-
         {productsStatus === "loading" && <p className="pos-empty">Cargando productos...</p>}
         {productsStatus === "error" && (
           <p className="pos-empty">No se pudo conectar con la API.</p>
@@ -143,18 +162,49 @@ function Pos() {
 
         <div className="pos-grid">
           {filteredProducts.map((product) => {
-            const qtyInCart = cartQtyByProduct.get(product._id) ?? 0;
+            const isBebida = product.category === "bebida" && product.sizes?.length === 3;
+
+            if (isBebida) {
+              return (
+                <div
+                  key={product._id}
+                  className={"pos-card pos-card-bebida" + (!product.available ? " is-disabled" : "")}
+                >
+                  <ProductVisual product={product} />
+                  <span className="pos-card-name">{product.name}</span>
+
+                  <div className="pos-size-row">
+                    {product.sizes.map((size) => {
+                      const qty = cartQtyByKey.get(cartKey(product._id, size.name)) ?? 0;
+                      return (
+                        <button
+                          key={size.name}
+                          type="button"
+                          className="pos-size-btn"
+                          disabled={!product.available}
+                          onClick={() => addToCart(product, size.name, size.price)}
+                        >
+                          <span className="pos-size-name">{size.name}</span>
+                          <span className="pos-size-price">{currency.format(size.price)}</span>
+                          {qty > 0 && <span className="pos-size-qty">x{qty}</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            }
+
+            const qtyInCart = cartQtyByKey.get(cartKey(product._id, undefined)) ?? 0;
             return (
               <button
                 key={product._id}
                 className="pos-card"
-                onClick={() => addToCart(product)}
+                onClick={() => addToCart(product, undefined, product.price)}
                 disabled={!product.available}
               >
                 {qtyInCart > 0 && <span className="pos-card-badge">{qtyInCart}</span>}
-                <span className="pos-card-icon" aria-hidden="true">
-                  {getProductIcon(product)}
-                </span>
+                <ProductVisual product={product} />
                 <span className="pos-card-name">{product.name}</span>
                 <span className="pos-card-price">{currency.format(product.price)}</span>
               </button>
@@ -163,7 +213,15 @@ function Pos() {
         </div>
       </section>
 
-      <aside className="pos-cart">
+      <aside className="pos-cart order-summary">
+        <input
+          type="text"
+          className="pos-search"
+          placeholder="Buscar producto por nombre..."
+          value={productQuery}
+          onChange={(e) => setProductQuery(e.target.value)}
+        />
+
         <h2>
           Cuenta
           {itemCount > 0 && (
@@ -177,18 +235,21 @@ function Pos() {
           <p className="pos-empty">Sin productos agregados.</p>
         ) : (
           <ul className="pos-cart-list">
-            {cart.map(({ product, qty }) => (
-              <li key={product._id} className="pos-cart-item">
+            {cart.map((item) => (
+              <li key={cartKey(item.product._id, item.size)} className="pos-cart-item">
                 <div className="pos-cart-item-info">
-                  <span>{product.name}</span>
+                  <span>
+                    {item.product.name}
+                    {item.size ? ` (${item.size})` : ""}
+                  </span>
                   <span className="pos-cart-item-price">
-                    {currency.format(product.price * qty)}
+                    {currency.format(item.unitPrice * item.qty)}
                   </span>
                 </div>
                 <div className="pos-cart-item-qty">
-                  <button onClick={() => changeQty(product._id, -1)}>−</button>
-                  <span>{qty}</span>
-                  <button onClick={() => changeQty(product._id, 1)}>+</button>
+                  <button onClick={() => changeQty(item.product._id, item.size, -1)}>−</button>
+                  <span>{item.qty}</span>
+                  <button onClick={() => changeQty(item.product._id, item.size, 1)}>+</button>
                 </div>
               </li>
             ))}

@@ -44,7 +44,7 @@ router.post(
     const productMap = new Map(products.map((product) => [String(product._id), product]));
 
     const orderItems = [];
-    for (const { productId, qty } of items) {
+    for (const { productId, qty, size } of items) {
       const product = productMap.get(productId);
       if (!product) {
         return res.status(400).json({ message: `Producto ${productId} no encontrado` });
@@ -52,7 +52,27 @@ router.post(
       if (!Number.isInteger(qty) || qty < 1) {
         return res.status(400).json({ message: `Cantidad inválida para ${product.name}` });
       }
-      orderItems.push({ product: product._id, name: product.name, price: product.price, qty });
+
+      let price;
+      let sizeName;
+      if (product.category === "bebida") {
+        const chosenSize = product.sizes.find((s) => s.name === size);
+        if (!chosenSize) {
+          return res.status(400).json({ message: `Selecciona un tamaño válido para ${product.name}` });
+        }
+        price = chosenSize.price;
+        sizeName = chosenSize.name;
+      } else {
+        price = product.price;
+      }
+
+      orderItems.push({
+        product: product._id,
+        name: product.name,
+        ...(sizeName && { size: sizeName }),
+        price,
+        qty,
+      });
     }
 
     const total = orderItems.reduce((sum, item) => sum + item.price * item.qty, 0);
