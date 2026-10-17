@@ -35,6 +35,7 @@ button {
   padding: 1.25rem 1.5rem;
   display: flex;
   align-items: baseline;
+  flex-wrap: wrap;
   gap: 0.75rem;
   border-bottom: 1px solid var(--border);
 }
@@ -300,13 +301,28 @@ button {
   border-radius: 6px;
 }
 
-.pos-total {
-  display: flex;
-  justify-content: space-between;
-  font-weight: 600;
+.pos-totals {
   margin-top: 1rem;
   padding-top: 0.75rem;
   border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+}
+
+.pos-totals > div {
+  display: flex;
+  justify-content: space-between;
+}
+
+.pos-totals-discount {
+  color: #2f6b3f;
+}
+
+.pos-total {
+  font-weight: 600;
+  font-size: 1rem;
 }
 
 .pos-checkout {
@@ -516,11 +532,399 @@ input:focus {
 }
 
 .order-item {
+  width: 100%;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 0.5rem;
   font-size: 0.85rem;
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 0.4rem;
+}
+
+.order-item:hover {
+  border-color: var(--border);
+}
+
+/* ---------- Rol, selects y método de pago ---------- */
+
+select {
+  font-family: inherit;
+  font-size: 0.9rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.pos-role {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.pos-payment {
+  margin-top: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+/* ---------- Stock y descuentos ---------- */
+
+.pos-stock {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.pos-stock.is-low {
+  color: #a15c00;
+}
+
+.pos-stock.is-out {
+  color: #b3261e;
+  font-weight: 600;
+}
+
+.pos-discount-badge {
+  display: inline-block;
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
+  color: #2f6b3f;
+  background: rgba(47, 107, 63, 0.1);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  width: fit-content;
+}
+
+.pos-hint-left {
+  text-align: left;
+}
+
+.pos-cart-item-qty button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ---------- Clientes ---------- */
+
+.customers-list-item {
+  align-items: center;
+}
+
+.customers-list-main {
+  display: flex;
+  flex-direction: column;
+}
+
+.customers-list-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.customer-admin-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+  font-size: 0.8rem;
+}
+
+.customer-admin-actions button,
+.admin-product-actions button {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 6px;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8rem;
+}
+
+button.danger {
+  background: #b3261e;
+  border-color: #b3261e;
+  color: #fff;
+}
+
+/* ---------- Administración de productos ---------- */
+
+.admin-products {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.admin-product {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.6rem 0.9rem;
+}
+
+.admin-product.is-active {
+  border-color: var(--accent);
+}
+
+.admin-product-image {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.admin-product-icon {
+  font-size: 1.8rem;
+  width: 44px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.admin-product-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.admin-product-info .pos-card-price {
+  font-size: 0.8rem;
+}
+
+.admin-tag {
+  margin-left: 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: #b3261e;
+}
+
+.admin-product-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.product-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+}
+
+.product-form h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+
+.product-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  color: var(--muted);
+}
+
+.product-form-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.product-form-row > * {
+  flex: 1;
+  min-width: 0;
+}
+
+.product-form-sizes {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.product-form-sizes legend {
+  color: var(--muted);
+  padding: 0 0.3rem;
+}
+
+.product-form label.product-form-check {
+  flex-direction: row;
+  align-items: center;
+  color: var(--text);
+}
+
+.product-form-check input {
+  width: auto;
+}
+
+/* ---------- Ticket ---------- */
+
+.ticket-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 15, 10, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 10;
+}
+
+.ticket {
+  background: #fff;
+  color: #2a2522;
+  width: min(360px, 100%);
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  border-radius: 10px;
+  padding: 1.5rem 1.25rem;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 0.85rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.ticket-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  text-align: center;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px dashed #bbb;
+}
+
+.ticket-header strong {
+  font-size: 1.05rem;
+}
+
+.ticket-id {
+  color: #777;
+  font-size: 0.75rem;
+}
+
+.ticket-customer {
+  margin: 0.75rem 0 0.5rem;
+}
+
+.ticket-items {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ticket-items th {
+  text-align: left;
+  font-weight: 600;
+  border-bottom: 1px dashed #bbb;
+  padding: 0.25rem 0;
+}
+
+.ticket-items td {
+  vertical-align: top;
+  padding: 0.3rem 0;
+}
+
+.ticket-items th:nth-child(n + 2),
+.ticket-items td:nth-child(n + 2) {
+  text-align: right;
+  white-space: nowrap;
+  padding-left: 0.5rem;
+}
+
+.ticket-unit {
+  display: block;
+  color: #777;
+  font-size: 0.75rem;
+}
+
+.ticket-totals {
+  margin: 0.75rem 0 0;
+  padding-top: 0.5rem;
+  border-top: 1px dashed #bbb;
+}
+
+.ticket-totals > div {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.15rem 0;
+}
+
+.ticket-totals dt,
+.ticket-totals dd {
+  margin: 0;
+}
+
+.ticket-total {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.ticket-thanks {
+  text-align: center;
+  margin: 1rem 0 0;
+}
+
+.ticket-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.ticket-actions button {
+  flex: 1;
+  padding: 0.55rem;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  background: #faf7f2;
+  color: #2a2522;
+}
+
+.ticket-actions .ticket-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* Al imprimir solo sale el ticket */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .ticket,
+  .ticket * {
+    visibility: visible;
+  }
+
+  .ticket {
+    position: absolute;
+    top: 0;
+    left: 0;
+    box-shadow: none;
+  }
+
+  .ticket-actions {
+    display: none;
+  }
 }
 
 @media (max-width: 720px) {

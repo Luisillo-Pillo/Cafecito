@@ -6,7 +6,8 @@ const morgan = require("morgan");
 const healthRoutes = require("./routes/health.routes");
 const productRoutes = require("./routes/product.routes");
 const customerRoutes = require("./routes/customer.routes");
-const orderRoutes = require("./routes/order.routes");
+const saleRoutes = require("./routes/sale.routes");
+const { notFoundHandler, errorHandler } = require("./middleware/errorHandler");
 
 function createApp() {
   const app = express();
@@ -18,24 +19,17 @@ function createApp() {
     })
   );
   app.use(express.json());
-  app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
+  if (process.env.NODE_ENV !== "test") {
+    app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
+  }
 
   app.use("/api", healthRoutes);
   app.use("/api/products", productRoutes);
   app.use("/api/customers", customerRoutes);
-  app.use("/api/orders", orderRoutes);
+  app.use("/api/sales", saleRoutes);
 
-  // 404
-  app.use((_req, res) => {
-    res.status(404).json({ message: "Ruta no encontrada" });
-  });
-
-  // Manejador de errores centralizado
-  // eslint-disable-next-line no-unused-vars
-  app.use((err, _req, res, _next) => {
-    console.error(err);
-    res.status(500).json({ message: "Error interno del servidor" });
-  });
+  app.use(notFoundHandler);
+  app.use(errorHandler);
 
   return app;
 }
