@@ -25,31 +25,58 @@ Cafecito/
 
 ### 2. Backend (`backend/`)
 
-**Stack:** Express 4, Mongoose 8, MongoDB Atlas, `cors`, `helmet`, `morgan`, `dotenv`. Dev con `nodemon`.
+**Stack:** Express 4, Mongoose 8, MongoDB Atlas, `cors`, `helmet`, `morgan`, `dotenv`. Dev con `nodemon`. Pruebas unitarias y de integración con el test runner nativo de Node (`node --test`) y `fetch` nativo, sin dependencias extra.
 
 **Módulo:** CommonJS (`"type": "commonjs"` en `package.json`).
 
-**Estructura:**
+**Contrato:** el backend implementa el **Contrato de API del Kit de Arranque** del curso (Proyecto Final con SCRUM: Sistema POS — "Cafecito Feliz"): endpoints `/api/products`, `/api/customers`, `/api/sales`, respuestas paginadas `{ data, total, page, limit }`, errores `{ error, details }` con los status del documento de edge cases (400/401/403/404/422), descuento progresivo y stock. Campos JSON en **camelCase** (como en los ejemplos del contrato) y cada documento expone `id` (string) en vez de `_id`.
+
+**Estructura** (capas sugeridas por el Repo Base del Kit: routes → controllers → services → models):
 ```
 backend/
 ├── .env.example
 ├── package.json
+├── ejemplos-api.http         # 36 requests para VS Code REST Client (éxito y error)
+├── postman-collection.json   # 35 requests para Postman con asserts de status y variables de ids
+├── scripts/
+│   ├── seed.js               # npm run seed: datos de ejemplo SOLO si las colecciones están vacías
+│   ├── migrate-mvp.js        # npm run migrate: migra datos del modelo anterior (idempotente)
+│   └── smoke.js              # npm run smoke: smoke test contra una API levantada (API_URL)
+├── test/
+│   ├── discount.test.js      # pruebas unitarias de la regla de descuento
+│   └── api.test.js           # 29 pruebas de integración (contrato + edge cases), requiere TEST_MONGODB_URI
 └── src/
     ├── index.js              # entry point: carga .env, conecta a DB, levanta Express
-    ├── app.js                # createApp(): configura middlewares, rutas, 404 y error handler
+    ├── app.js                # createApp(): middlewares, rutas, 404 y error handler
     ├── config/
-    │   └── db.js             # connectDB() / disconnectDB() con Mongoose
+    │   ├── db.js             # connectDB() / disconnectDB() con Mongoose
+    │   └── constants.js      # STORE_NAME, ROLES, PAYMENT_METHODS, PRODUCT_CATEGORIES
     ├── middleware/
-    │   └── asyncHandler.js   # envuelve handlers async para propagar errores a Express
+    │   ├── asyncHandler.js   # envuelve handlers async para propagar errores a Express
+    │   ├── auth.js           # requireRole(...) / adminOnly / staff (header X-User-Role)
+    │   └── errorHandler.js   # 404 genérico + manejador central de errores
+    ├── utils/
+    │   ├── httpError.js      # HttpError(status, error, extra), validationError(), notFound()
+    │   ├── validation.js     # isValidId, round2, escapeRegex, normalizePhoneOrEmail, parsePagination, paginated
+    │   └── toJSON.js         # serialización: expone `id`, oculta `_id` y `__v`
     ├── models/
-    │   ├── Product.js        # esquema Mongoose de producto
-    │   ├── Customer.js       # esquema Mongoose de cliente
-    │   └── Order.js          # esquema Mongoose de compra (ligada a cliente)
+    │   ├── Product.js
+    │   ├── Customer.js
+    │   └── Sale.js           # venta + items (SaleItem embebido)
+    ├── services/             # lógica de negocio y validaciones con mensajes del contrato
+    │   ├── discount.service.js   # calculateDiscount(purchasesCount)
+    │   ├── product.service.js
+    │   ├── customer.service.js
+    │   └── sale.service.js       # createSale(): flujo completo de una venta
+    ├── controllers/          # traducen request → servicio → respuesta HTTP
+    │   ├── product.controller.js
+    │   ├── customer.controller.js
+    │   └── sale.controller.js
     └── routes/
         ├── health.routes.js   # GET /api/health
-        ├── product.routes.js  # CRUD de productos
-        ├── customer.routes.js # CRUD de clientes + historial de compras
-        └── order.routes.js    # registrar/listar compras
+        ├── product.routes.js
+        ├── customer.routes.js
+        └── sale.routes.js
 ```
 
 **`src/index.js`:**
@@ -58,63 +85,92 @@ backend/
 - Puerto desde `process.env.PORT`, default `5000`.
 
 **`src/app.js` — `createApp()`:**
-- Orden de middlewares: `helmet()` → `cors({ origin: process.env.CORS_ORIGIN })` → `express.json()` → `morgan("dev"` en desarrollo, `"combined"` en producción`)`.
-- Rutas montadas en `/api` (health) y `/api/products` (CRUD).
-- Handler 404 genérico al final de las rutas: `{ message: "Ruta no encontrada" }`.
-- Middleware de errores centralizado (4 argumentos, `err` primero) que loggea el error y responde `500 { message: "Error interno del servidor" }`.
+- Orden de middlewares: `helmet()` → `cors({ origin: process.env.CORS_ORIGIN })` → `express.json()` → `morgan("dev"` en desarrollo, `"combined"` en producción, desactivado con `NODE_ENV=test`).
+- Rutas montadas en `/api` (health), `/api/products`, `/api/customers`, `/api/sales`.
+- `notFoundHandler` al final: `404 { error: "Ruta no encontrada" }`.
+- `errorHandler` (4 argumentos): `HttpError` → su status y cuerpo; JSON mal formado → `400`; índice único duplicado (`err.code === 11000`) → `400`; cualquier otro → loggea y responde `500 { error: "Error interno del servidor" }`.
 
 **`src/config/db.js`:**
-- `connectDB()` lee `MONGODB_URI`; si no existe, lanza un `Error` explicativo (apunta a `.env.example`) en vez de dejar que Mongoose falle silenciosamente.
+- `connectDB(uri?)` lee `MONGODB_URI` (o `DB_CONNECTION_STRING`, el nombre del Kit), o recibe la URI como parámetro (pruebas); si no hay ninguna, lanza un `Error` explicativo (apunta a `.env.example`) en vez de dejar que Mongoose falle silenciosamente.
 - Loggea eventos de conexión (`connected`, `error`, `disconnected`) por consola con prefijo `[mongo]`.
 - `disconnectDB()` para cierres limpios (tests, scripts).
 
 **`src/middleware/asyncHandler.js`:**
 - Helper `asyncHandler(fn)` que envuelve un route handler async y hace `.catch(next)` sobre la promesa, porque Express 4 no captura rechazos de promesas automáticamente.
 
+**`src/middleware/auth.js` — autenticación básica del MVP:**
+- `Authorization: Bearer <token>`: el rol sale del token (`ADMIN_TOKEN` / `VENDEDOR_TOKEN` del `.env`; fuera de producción valen por default `dev-admin-token` y `dev-vendedor-token`). Token mal formado o desconocido → `401 { error: "Token inválido" }`.
+- Sin `Authorization`, se acepta el "header estático para desarrollo" que permite el Kit: `X-User-Role: admin | vendedor` (lo usa el frontend). Rol desconocido → `401 { error: "Credencial inválida" }`.
+- Sin ninguna credencial → `401 { error: "Autenticación requerida" }`; rol sin permiso → `403 { error: "Permisos insuficientes" }`.
+- `requireRole(...roles)` con atajos `adminOnly` y `staff` (admin o vendedor). Se puede cambiar por JWT más adelante sin tocar las rutas.
+
 **`src/models/Product.js`** — esquema Mongoose `Product`:
 | Campo         | Tipo              | Reglas                                                        |
 |---------------|-------------------|------------------------------------------------------------------|
-| `name`        | String            | requerido, trim                                                  |
-| `description` | String            | default `""`                                                     |
-| `category`    | String            | enum `["bebida", "postre", "snack", "otro"]`, default `"bebida"`  |
-| `price`       | Number            | requerido (mínimo `0`) **solo si `category !== "bebida"`**        |
-| `sizes`       | `[{ name, price }]` | default `[]`; validación condicional: exactamente **3** elementos si `category === "bebida"`, **0** en cualquier otro caso |
+| `name`        | String            | requerido, trim, 2–100 caracteres                                |
+| `description` | String            | default `""` (guarda los ingredientes)                           |
+| `category`    | String            | enum `["bebida", "postre", "snack", "otro"]`, default `"otro"`    |
+| `price`       | Number            | requerido (> 0) **solo si `category !== "bebida"`**               |
+| `sizes`       | `[{ name, price }]` | default `[]`; exactamente **3** si `category === "bebida"`, **0** en cualquier otro caso; cada `price` > 0 |
+| `stock`       | Number            | requerido, entero ≥ 0 (los 3 tamaños de una bebida comparten stock) |
 | `available`   | Boolean           | default `true`                                                   |
 
-Las bebidas se venden por tamaño (ej. Chico/Mediano/Grande, cada uno con su propio precio) en vez de un precio único; el resto de categorías usa `price` como antes. Con `timestamps: true` (agrega `createdAt`/`updatedAt`).
+Las bebidas se venden por tamaño (Chico/Mediano/Grande, cada uno con su propio precio) en vez de un precio único; es una extensión de Cafecito sobre el Kit (que solo pide `name`, `price`, `stock`). La categoría por default es `"otro"` para que un `POST` exactamente como el del contrato (`{ name, price, stock }`) funcione. Con `timestamps: true`.
 
 **`src/models/Customer.js`** — esquema Mongoose `Customer`:
-| Campo   | Tipo   | Reglas                                           |
-|---------|--------|---------------------------------------------------|
-| `name`  | String | requerido, trim                                   |
-| `email` | String | requerido, trim, lowercase, **único**             |
-| `phone` | String | requerido, trim                                   |
+| Campo            | Tipo   | Reglas                                                       |
+|------------------|--------|---------------------------------------------------------------|
+| `name`           | String | requerido, trim, 2–100 caracteres                             |
+| `phoneOrEmail`   | String | requerido, **único**; correo válido (se guarda en minúsculas) o teléfono `+` y 8–15 dígitos (se guarda sin espacios ni guiones) |
+| `purchasesCount` | Number | default `0`; **solo lo incrementa `POST /api/sales`**, la API lo ignora en POST/PUT de clientes |
 
-**`src/models/Order.js`** — esquema Mongoose `Order` (una compra/venta):
-| Campo      | Tipo                        | Reglas                                   |
-|------------|-----------------------------|-------------------------------------------|
-| `customer` | ObjectId (ref `Customer`)   | requerido                                 |
-| `items`    | `[{ product, name, size?, price, qty }]` | al menos 1 ítem; `product` ref a `Product`, `name`/`price` (y `size` si es bebida) se copian al momento de la venta (no cambian si el producto se edita después) |
-| `total`    | Number                      | requerido, mínimo `0`, calculado en el servidor |
+**`src/models/Sale.js`** — esquema Mongoose `Sale` (reemplaza al antiguo `Order`):
+| Campo                  | Tipo                      | Reglas                                   |
+|------------------------|---------------------------|-------------------------------------------|
+| `customerId`           | ObjectId (ref `Customer`) | opcional, default `null` (venta a público general) |
+| `customerNameSnapshot` | String                    | nombre del cliente al momento de la venta |
+| `paymentMethod`        | String                    | enum `["cash", "card", "transfer"]`, default `"cash"` |
+| `items`                | `[{ productId, productNameSnapshot, size?, unitPriceSnapshot, quantity, lineTotal }]` | al menos 1; snapshots de nombre/precio/tamaño al vender |
+| `subtotal`, `discountPercent`, `discountAmount`, `total` | Number | calculados por el backend, redondeados a 2 decimales |
+| `legacyOrderId`        | ObjectId                  | solo en ventas migradas desde `orders`   |
 
-**Rutas:**
-- `GET /api/health` → `{ status: "ok", db: <estado de conexión mongoose>, timestamp }`.
-- `GET /api/products` → lista todos, ordenados por **popularidad** (unidades vendidas, sumando `items.qty` de todas las compras vía agregación sobre `Order`; empate se resuelve alfabéticamente por `name`). Un producto sin ventas tiene popularidad `0`.
-- `GET /api/products/:id` → detalle; `404` si no existe.
-- `POST /api/products` → crea; `201` con el documento creado.
-- `PUT /api/products/:id` → actualiza con `runValidators: true`; `404` si no existe.
-- `DELETE /api/products/:id` → elimina; `204` sin contenido; `404` si no existe.
-- `GET /api/customers?search=texto` → lista clientes; `search` filtra por nombre/correo/teléfono (regex case-insensitive, escapado).
-- `GET /api/customers/:id` → detalle; `404` si no existe.
-- `GET /api/customers/:id/orders` → historial de compras del cliente, más reciente primero.
-- `POST /api/customers` → registra cliente; `201`; `409` si el correo ya existe (índice único + `err.code === 11000`).
-- `PUT /api/customers/:id` → actualiza; mismas reglas de `409` por correo duplicado.
-- `DELETE /api/customers/:id` → elimina; `204`; `404` si no existe.
-- `GET /api/orders` → lista compras con el cliente poblado (`name`, `email`).
-- `GET /api/orders/:id` → detalle de una compra.
-- `POST /api/orders` → registra una venta: recibe `{ customerId, items: [{ productId, qty, size? }] }`; el servidor busca los productos, **recalcula precio y total del lado del servidor** (nunca confía en precios del cliente), y guarda copia de `name`/`price`/`size` en cada ítem. Si el producto es una bebida, `size` es obligatorio y debe coincidir con uno de los `sizes` del producto (si no, `400 "Selecciona un tamaño válido para <producto>"`); para el resto de categorías se ignora y se usa `price`. `400` si falta algún producto/cantidad inválida, `404` si el cliente no existe.
+**Regla de descuento (`services/discount.service.js`):** según `purchasesCount` del cliente **antes** de la venta: `0` → 0%, `1–3` → 5%, `4–7` → 10%, `8+` → 15% (tope). Sin cliente → 0%. Justificación de negocio en el Kit (contexto-narrativo): reducir churn con margen controlado.
 
-Todas las rutas async usan `asyncHandler`. Mensajes de error en español.
+**Rutas** (permisos según la matriz del contrato):
+| Método y ruta | Rol | Respuesta |
+|---|---|---|
+| `GET /api/health` | público | `{ status: "ok", db, timestamp }` |
+| `GET /api/products?q=&page=&limit=` | público | `{ data, total, page, limit }` ordenado por **popularidad** (unidades vendidas sumando `items.quantity` de `Sale`; empate alfabético). `q` busca por nombre (regex escapada, sin mayúsculas). `limit` default 20, máx. 100. Sin resultados → `200` con `data: []` y `message` |
+| `GET /api/products/:id` | público | producto; `404 { error, id }` si no existe (o el id es inválido) |
+| `POST /api/products` | admin | `201`; `422 { error: "Validación fallida", details: [{ field, message }] }` |
+| `PUT /api/products/:id` | admin | actualización parcial (se valida el producto ya combinado); `200`; `404`; `422` |
+| `DELETE /api/products/:id` | admin | `200 { message, id }`; `404` |
+| `GET /api/customers?q=&page=&limit=` | admin, vendedor | paginado; `q` filtra por nombre o `phoneOrEmail`; cada cliente incluye `nextDiscountPercent` |
+| `GET /api/customers/:id` | admin, vendedor | cliente; `404` |
+| `GET /api/customers/:id/sales` | admin, vendedor | historial paginado, más reciente primero |
+| `POST /api/customers` | admin, vendedor | `201` con `purchasesCount: 0`; `422` (nombre 2–100, contacto inválido); **duplicado → `400 { error: "El cliente ya existe", details: [{ field, message, existingCustomerId }] }`** (decisión del equipo: rechazar) |
+| `PUT /api/customers/:id` | admin, vendedor | parcial; mismas reglas de `422`/`400` |
+| `DELETE /api/customers/:id` | admin | `200 { message, id }`; `404` |
+| `POST /api/sales` | admin, vendedor | registra la venta (ver flujo abajo); `201` con la venta y su `ticket` |
+| `GET /api/sales?customerId=&page=&limit=` | admin, vendedor | paginado, más recientes primero |
+| `GET /api/sales/:id` | admin, vendedor | venta con `ticket`; `404` |
+
+**Flujo de `POST /api/sales`** — body `{ customerId?, paymentMethod?, items: [{ productId, quantity, size? }] }`:
+1. Forma del body → `422`: `items` vacío, `quantity` no entero ≥ 1, `paymentMethod` fuera de `cash/card/transfer`.
+2. Cliente: si viene `customerId` y no existe → `400 "Cliente no encontrado"` (decisión: rechazar para mantener integridad). `null`/ausente → venta sin cliente.
+3. Productos: alguno no existe → `400 "Producto no encontrado"`; no disponible → `400`; bebida sin tamaño válido → `422`.
+4. Stock: suma cantidades por producto (dos tamaños de la misma bebida comparten stock); si alguno no alcanza → `400 "Stock insuficiente"` con `available`/`requested` y **se rechaza toda la venta**. El descuento de stock es atómico por producto (`updateOne` con `stock >= cantidad`), y si algo falla a mitad se regresa el stock ya descontado.
+5. Cálculo en el servidor (nunca se confía en precios del cliente): `lineTotal`, `subtotal`, `discountPercent` por `purchasesCount`, `discountAmount`, `total`.
+6. Guarda la venta; si falla, regresa el stock. Si hay cliente, `purchasesCount += 1` (una venta sin cliente no incrementa a nadie).
+7. Responde `201` con `saleId`, `items` (`productName`, `size`, `quantity`, `unitPrice`, `lineTotal`), totales y `ticket` (`storeName: "Cafecito Feliz"`, `timestamp`, `customerName` o "Público general", items, `discount` como texto `"5% (-$0.73)"` o "Sin descuento", `paymentMethod` en español).
+
+Mensajes de error y de API en español; la estructura (`error`, `details`, `id`) y los status siguen el contrato.
+
+**Scripts:**
+- `npm run migrate` (`scripts/migrate-mvp.js [stockInicial=50]`): productos sin `stock` → stock inicial; clientes con `email`/`phone` → `phoneOrEmail` (email) y borra el índice viejo `email_1`; copia `orders` → `sales` (sin descuento, efectivo, misma fecha; `orders` no se borra); recalcula `purchasesCount` contando ventas. Idempotente.
+- `npm run seed` (`scripts/seed.js`): inserta 8 productos y 5 clientes de ejemplo (con `purchasesCount` que cubren los 4 niveles de descuento) **solo si** las colecciones están vacías; si la base estaba totalmente vacía, registra además 3 ventas de ejemplo con `createSale()` (5%, 15% y público general). Nunca borra.
+- `npm run smoke` (`scripts/smoke.js`): espera a `/health` y prueba health, listar productos, crear producto/cliente/venta, consultar la venta, 401 sin token y 400 por stock; limpia lo que creó. Sale con código 1 si algo falla. (Se llama `smoke.js` y no `smoke-test.js` para que `node --test` no lo tome como prueba.)
+- `npm test`: `node --test` → `test/discount.test.js` (unitarias) y `test/api.test.js` (integración: levanta `createApp()` en un puerto libre contra `TEST_MONGODB_URI`; **se omite** si la variable no existe y se niega a correr si el nombre de la base no termina en `_test`, porque borra sus colecciones). Incluye la prueba de dos ventas simultáneas que no deben dejar stock negativo.
 
 **Variables de entorno (`backend/.env.example`):**
 ```
@@ -122,6 +178,9 @@ PORT=5000
 NODE_ENV=development
 MONGODB_URI=mongodb+srv://<usuario>:<password>@<cluster>.mongodb.net/cafecito?retryWrites=true&w=majority&appName=Cafecito
 CORS_ORIGIN=http://localhost:5173
+ADMIN_TOKEN=
+VENDEDOR_TOKEN=
+# TEST_MONGODB_URI=mongodb://127.0.0.1:27017/cafecito_test
 ```
 
 ### 3. Frontend (`frontend/`)
@@ -137,39 +196,43 @@ frontend/
 ├── vite.config.js
 └── src/
     ├── main.jsx               # entry point: createRoot + StrictMode
-    ├── App.jsx                # raíz: header + switch de vista (pos | clientes)
-    ├── api.js                 # API_URL + apiFetch() helper (fetch + manejo de errores)
-    ├── utils.js                # normalize() / slugify(): para búsquedas y nombres de archivo
+    ├── App.jsx                # raíz: header + selector de rol + switch de vista (pos | clientes | productos)
+    ├── api.js                 # API_URL, apiFetch(), ApiError, getRole()/setRole()
+    ├── utils.js                # normalize(), slugify(), currency, dateTimeFormat, PAYMENT_METHODS, previewDiscount(), discountLabel()
     ├── productIcon.js          # getProductIcon(): ícono emoji de respaldo (por palabra clave o categoría)
     ├── productImages.js        # getProductImage(): ilustración SVG por producto (import.meta.glob + slugify)
     ├── assets/products/*.svg   # 30 ilustraciones, una por producto, nombradas con el slug de su nombre
     ├── index.css
     ├── components/
-    │   └── CustomerForm.jsx   # formulario reutilizable: registra un cliente (POST /api/customers)
+    │   ├── CustomerForm.jsx   # registra un cliente (POST /api/customers) con nombre + phoneOrEmail
+    │   └── Ticket.jsx         # ticket visual (modal) a partir de sale.ticket; botón Imprimir
     └── pages/
-        ├── Pos.jsx            # página de punto de venta
-        └── Customers.jsx      # página de clientes + historial de compras
+        ├── Pos.jsx            # punto de venta
+        ├── Customers.jsx      # clientes + historial de compras
+        └── Products.jsx       # administración de productos (solo admin)
 ```
 
 - `vite.config.js`: plugin de React, servidor en puerto `5173`.
-- `api.js`: centraliza `API_URL` (default `http://localhost:5000/api`) y `apiFetch(path, options)`, que lanza `Error` con el `message` del backend si la respuesta no es `ok`.
-- `App.jsx`: header con el logo del sitio (`assets/products/americano.svg`, la ilustración del Americano reutilizada como logo), el nombre de la app y una navegación simple (dos botones, estado local `view`) entre **Punto de venta** y **Clientes**. Sin librería de ruteo — es solo un `useState`.
-- `pages/Pos.jsx` — página de punto de venta, minimalista:
-  - Lista productos (`GET /products`) como tarjetas **grandes, 3 por fila** (`pos-grid`: `grid-template-columns: repeat(3, 1fr)`, 2 columnas en pantallas medianas y 1 en móvil), cada una con una ilustración y el nombre. La ilustración (`<ProductVisual>`) usa `getProductImage(product)` — busca en `assets/products/` un SVG cuyo nombre de archivo sea `slugify(product.name)` (ej. "Café de olla" → `cafe-de-olla.svg`) — y, si no existe ninguno (producto agregado después, sin ilustración dedicada), cae al ícono emoji genérico (`getProductIcon`).
-    - **Bebidas** (`category === "bebida"` con 3 `sizes`): la tarjeta no es un solo botón, sino un contenedor con 3 botones de tamaño (uno por `size`), cada uno mostrando el nombre del tamaño y su precio; click en un tamaño agrega esa combinación producto+tamaño a la "Cuenta".
-    - **Resto de categorías**: la tarjeta entera es un botón con un precio único; click la agrega directamente.
-  - **Panel de cuenta pegajoso** (`.order-summary`, dentro de `<aside className="pos-cart order-summary">`): usa `position: sticky; top: 1.5rem; align-self: start` dentro de la grilla de `.pos-main`. Mientras hay catálogo encima, se desplaza con el scroll en su posición normal (alineado con el inicio de la grilla de productos); en cuanto su borde superior llegaría a 1.5rem del viewport, se "pega" ahí (dejando el mismo margen que tiene el resto de la página arriba) y se queda fijo mientras el resto de la página sigue bajando; al subir de nuevo, se despega automáticamente y vuelve a su lugar en el flujo normal. `max-height: calc(100vh - 3rem)` + `overflow-y: auto` evitan que un carrito muy largo se salga de la pantalla mientras está pegado.
-  - El **campo de búsqueda de productos** vive dentro de ese panel flotante (arriba de "Cuenta") y filtra las tarjetas por nombre en el cliente (sin golpear la API), ignorando acentos y mayúsculas (`normalize`).
-  - Cada botón de producto/tamaño muestra un badge con la cantidad seleccionada de esa combinación cuando ya está en el carrito, y el encabezado "Cuenta" muestra el conteo total de artículos junto al listado y el total.
-  - El carrito agrupa por `producto + tamaño` (clave `cartKey`); cada línea guarda el precio unitario resuelto al agregarla (`unitPrice`) para no depender de que el catálogo no cambie mientras se arma la venta. Permite subir/bajar cantidad (`+`/`−`); al llegar a 0 el ítem se quita. Muestra subtotal por línea (con el tamaño entre paréntesis si aplica) y total general (`Intl.NumberFormat` en `es-MX`).
-  - **Selector de cliente** integrado en el panel de cuenta: campo de búsqueda (debounce de 300ms) contra `GET /customers?search=`, lista de coincidencias clicables, y botón "+ Registrar cliente nuevo" que despliega `<CustomerForm>` inline.
-  - Botón **Cobrar** solo se habilita con carrito no vacío **y** cliente seleccionado; hace `POST /orders` con `{ customerId, items: [{ productId, qty, size? }] }` y, si tiene éxito, vacía carrito y cliente y muestra un mensaje de confirmación.
-  - Maneja estados `loading`/`ready`/`error` para productos, y mensajes de error específicos del checkout (ej. cliente no encontrado).
-- `pages/Customers.jsx` — página de clientes:
-  - Lista todos los clientes (`GET /customers`) con una barra de búsqueda (filtro en cliente sobre la lista ya cargada) y botón "+ Nuevo cliente" (abre `<CustomerForm>`).
-  - Al hacer click en un cliente, carga su historial (`GET /customers/:id/orders`) en un panel lateral: fecha, resumen de ítems (con el tamaño entre paréntesis si el ítem era una bebida) y total de cada compra.
-- `components/CustomerForm.jsx`: formulario controlado (nombre, correo, teléfono) que hace `POST /customers`; muestra el mensaje de error del backend (ej. correo duplicado → 409) y llama a `onCreated(customer)` al terminar, para que la página que lo use decida qué hacer con el cliente recién creado (seleccionarlo, refrescar la lista, etc.).
-- Estilos en `index.css`: paleta neutra (beige/blanco) con un acento café (`--accent: #6b4226`), layout en dos columnas (`pos-main`: contenido + panel lateral) reutilizado tanto en POS como en Clientes, colapsa a una sola columna en móvil (`max-width: 720px`). Sin librerías de UI ni CSS frameworks.
+- `api.js`: centraliza `API_URL` (default `http://localhost:5000/api`) y `apiFetch(path, { method, body })`, que agrega `X-User-Role` y `Content-Type`, serializa `body` y, si la respuesta no es `ok`, lanza `ApiError` (con `status`, `details` y un mensaje armado con los `details[].message` del backend). El rol actual se guarda en `localStorage` (envuelto en try/catch; default `vendedor`).
+- `App.jsx`: header con el logo (`assets/products/americano.svg`), el nombre de la app, navegación con estado local `view` y un **selector de rol** (Vendedor / Administrador). La pestaña **Productos** solo aparece para admin; al cambiar de rol las páginas se remontan (`key={role}`). Sin librería de ruteo.
+- `pages/Pos.jsx` — punto de venta:
+  - Lista productos (`GET /products?limit=100`, usa `res.data`) como tarjetas **grandes, 3 por fila** (`pos-grid`; 2 columnas en pantallas medianas y 1 en móvil), con ilustración (`<ProductVisual>`: SVG por slug o emoji de respaldo), nombre y **stock restante** ("Quedan N", descontando lo que ya está en el carrito; "Agotado" en 0).
+    - **Bebidas** (`category === "bebida"` con 3 `sizes`): 3 botones de tamaño con su precio.
+    - **Resto**: la tarjeta entera es un botón con precio único.
+    - No deja agregar más unidades que el stock (los tamaños de una bebida comparten stock); productos no disponibles o agotados se deshabilitan.
+  - **Panel de cuenta pegajoso** (`.order-summary` dentro de `<aside className="pos-cart order-summary">`): `position: sticky; top: 1.5rem; align-self: start`, `max-height: calc(100vh - 3rem)` + `overflow-y: auto`. Contiene el **buscador de productos** (filtra en el cliente con `normalize`), la "Cuenta" (agrupada por `producto + tamaño`, `+`/`−`, subtotal por línea), el cliente, los totales, el método de pago y el botón Cobrar.
+  - **Cliente opcional**: búsqueda con debounce de 300ms (`GET /customers?q=`), registro inline con `<CustomerForm>`. Al seleccionarlo muestra su nivel ("Cliente semanal · 10%"). Sin cliente se cobra como público general, sin descuento.
+  - **Totales**: subtotal, descuento (vista previa con `previewDiscount`, misma regla que el backend) y total. El backend recalcula todo al cobrar.
+  - **Método de pago**: Efectivo / Tarjeta / Transferencia (`cash`/`card`/`transfer`).
+  - **Cobrar** se habilita con carrito no vacío; hace `POST /sales` con `{ customerId | null, paymentMethod, items: [{ productId, quantity, size? }] }`. Si tiene éxito muestra el **`<Ticket>`** devuelto por el backend, vacía carrito y cliente y recarga productos (stock). Si falla muestra el mensaje del backend (ej. "Solo hay 3 disponibles, se pidieron 5") y recarga productos.
+- `pages/Customers.jsx` — clientes:
+  - Búsqueda en el servidor (`GET /customers?q=&limit=100`, debounce 300ms), botón "+ Nuevo cliente" (`<CustomerForm>`). Cada cliente muestra `phoneOrEmail`, número de compras y su % de descuento.
+  - Al seleccionar uno carga su historial (`GET /customers/:id/sales`): fecha, resumen de ítems (con tamaño), descuento aplicado y total; clic en una venta abre su ticket.
+  - Admin ve "Eliminar cliente" (con confirmación en línea).
+- `pages/Products.jsx` (solo admin): lista alfabética con ilustración, precios (por tamaño en bebidas), stock y estado; formulario lateral para crear/editar (nombre, descripción, categoría, precio o 3 tamaños con precio, stock, disponible) y eliminar con confirmación en línea. Muestra los errores `422` del backend.
+- `components/CustomerForm.jsx`: formulario controlado (nombre, correo o teléfono) → `POST /customers`; muestra el error del backend (422 o 400 duplicado) y llama a `onCreated(customer)`.
+- `components/Ticket.jsx`: modal con tienda, fecha, folio (últimos 8 caracteres del `saleId`), cliente, ítems, subtotal, descuento, total y método de pago; botón **Imprimir** (`window.print()`; en `@media print` solo se imprime el ticket).
+- Estilos en `index.css`: paleta neutra (beige/blanco) con un acento café (`--accent: #6b4226`), layout en dos columnas (`pos-main`) reutilizado en las tres vistas, colapsa a una columna en móvil (`max-width: 720px`). Sin librerías de UI ni CSS frameworks.
 - `index.html`: título `Cafecito`, `lang="es"`.
 - **Variables de entorno (`frontend/.env.example`):**
   ```
@@ -179,14 +242,18 @@ frontend/
 ### 4. Convenciones generales
 
 - Comentarios y mensajes de usuario/API en **español**.
-- Sin TypeScript, sin frameworks de testing todavía.
+- Sin TypeScript. Pruebas con `node --test` (sin frameworks); pruebas manuales de la API con `backend/ejemplos-api.http` (REST Client) o `backend/postman-collection.json` (Postman).
+- **Flujo de trabajo (`CONTRIBUTING.md`):** tablero To Do / In Progress / In Review / Done con WIP máximo 2 por persona; ramas `feature/<historia>` (también `fix/`, `docs/`, `test/`) que salen de `develop` y regresan por PR (nunca push directo a `main`/`develop`); 1 historia = 1 PR; commits con prefijos `feat:`/`fix:`/`test:`/`docs:`; cómo resolver conflictos; Definition of Done de 8 puntos. Plantilla de PR en `.github/pull_request_template.md` con el checklist de la DoD.
+- **CI (`.github/workflows/ci.yml`, GitHub Actions):** en push a `main`, `develop`, `feature/**` y en PRs a `main`/`develop`, con un servicio `mongo:7`: `npm ci` → `npm test` (con `TEST_MONGODB_URI`) → `npm run build` → levantar la API y `npm run smoke`. Si un paso falla, el PR no se mergea.
 - `.env` reales nunca se commitean (están en `.gitignore`); siempre se documenta el `.env.example` correspondiente.
 - Backend "fail fast": si falta configuración crítica (ej. `MONGODB_URI`), el proceso debe morir con un mensaje claro en vez de arrancar en un estado inválido.
+- Se trabaja en la rama `develop`.
 - Scripts raíz (`package.json`):
   - `npm run dev` — backend + frontend en paralelo (`concurrently`).
   - `npm run dev:backend` / `npm run dev:frontend` — por separado.
   - `npm run build` — build de producción del frontend (Vite); el backend no requiere build.
   - `npm start` — levanta el backend en modo producción (`node src/index.js`).
+  - `npm run seed` / `npm run migrate` / `npm test` — atajos a los scripts del backend (`npm run smoke --workspace=backend` para el smoke test).
 
 ### 5. Notas de despliegue / infraestructura
 
@@ -194,6 +261,7 @@ frontend/
 - Hay que whitelistear la IP del entorno donde corre el backend en **Atlas → Network Access**.
 - CORS del backend debe apuntar al origen real del frontend desplegado (`CORS_ORIGIN`).
 - La base de datos trae un catálogo de ejemplo tomado de un menú real de cafetería (`productos_cafeteria.csv` provisto por el usuario): 30 productos — 23 bebidas (cafés calientes, otras bebidas calientes, bebidas frías y frappés) con 3 tamaños Chico/Mediano/Grande y su propio precio cada una, y 7 alimentos con precio único (3 `snack` salados — croissant de jamón y queso, bagel, chapata de pollo — y 4 `postre` dulces — concha, muffin, brownie, pastel de zanahoria). El campo `description` de cada producto guarda su lista de ingredientes tal cual venía en el CSV. Cargado vía `POST /api/products`, junto con una lista default de 5 clientes (Ana Torres, Carlos Méndez, Laura Jiménez, Jorge Ramírez, Sofía Vargas) cargada vía `POST /api/customers`, para poder probar la UI con datos reales.
+- Después de actualizar a la versión del MVP del Kit, correr **una vez** `npm run migrate` contra la base existente (agrega `stock`, convierte clientes a `phoneOrEmail` y pasa `orders` a `sales`).
 
 ---
 
@@ -214,3 +282,5 @@ frontend/
 - **2026-10-15** — El panel de cuenta pasó de `position: fixed` (desalineado con la grilla de productos y con un offset fijo adivinado) a `position: sticky; align-self: start`. Esto alinea su borde superior con el de la grilla de productos automáticamente (ambos son hijos de la misma grilla `.pos-main` con el mismo padding) y hace que se "pegue" arriba solo al hacer scroll hacia abajo, regresando a su lugar al subir — en vez de estar siempre fijo con un offset calculado a mano. Se eliminó `.pos-main-floating` (ya no hace falta reservar espacio con `padding-right`).
 - **2026-10-15** — El `top` del panel pegajoso pasó de `0` a `1.5rem` para conservar el mismo margen que ya existía entre el contenido y el borde del sitio, en vez de quedar pegado a ras del viewport al hacer scroll.
 - **2026-10-15** — `GET /api/products` ahora ordena por popularidad (unidades vendidas vía agregación sobre `Order.items.qty`) en vez de por fecha de creación; empate se resuelve alfabéticamente. El frontend no necesitó cambios porque ya renderiza los productos en el orden que recibe de la API.
+- **2026-10-16** — Alineación con el **MVP del Kit de Arranque** del curso de SCRUM (contrato de API, modelo de datos, edge cases, flujos y matriz de permisos). Backend reorganizado en capas (routes → controllers → services → models, más `utils/` y `middleware/auth.js` + `errorHandler.js`). `Order` se reemplaza por `Sale` y `/api/orders` por `/api/sales`: cliente opcional (venta a público general), `paymentMethod`, descuento progresivo por `purchasesCount` (0/5/10/15%), validación y descuento atómico de **stock** (venta todo-o-nada), snapshots de nombre/precio y **ticket** en la respuesta. `Product` gana `stock` (y la categoría por default pasa a `"otro"`); `Customer` pasa de `email` + `phone` a **`phoneOrEmail`** único + `purchasesCount`. Respuestas paginadas `{ data, total, page, limit }` con `q`, errores `{ error, details }` (400/401/403/404/422), `id` en vez de `_id`. Roles con header `X-User-Role` (admin / vendedor). Scripts `npm run migrate` (migra la base existente, idempotente) y `npm run seed`, pruebas `node --test` y `ejemplos-api.http`. Frontend: selector de rol, POS con stock, cliente opcional, vista previa de descuento, método de pago y ticket imprimible; historial con tickets en Clientes; nueva página **Productos** (CRUD, solo admin). Se eliminaron `models/Order.js` y `routes/order.routes.js`.
+- **2026-10-16** — Cierre de requisitos del Kit y de los sprints: autenticación con `Authorization: Bearer <token>` (además de `X-User-Role`), alias `DB_CONNECTION_STRING`, pruebas de integración de la API (`test/api.test.js`, base `_test` desechable), smoke test (`scripts/smoke.js`), pipeline de CI en GitHub Actions, colección de Postman, ventas de ejemplo en el seed, `CONTRIBUTING.md` (tablero, WIP, ramas `feature/`, PRs, conflictos, Definition of Done) y plantilla de Pull Request.

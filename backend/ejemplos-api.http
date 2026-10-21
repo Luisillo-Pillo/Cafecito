@@ -1,0 +1,292 @@
+### Ejemplos de la API de Cafecito (extensión REST Client de VS Code: humao.rest-client)
+### Abre este archivo y da clic en "Send Request" sobre cada petición.
+### Las peticiones con "# @name" guardan su respuesta para reutilizar ids más abajo.
+### Ejecútalas en orden la primera vez.
+
+### Autenticación: header "X-User-Role: admin | vendedor" (desarrollo) o
+### "Authorization: Bearer <token>" (tokens de ADMIN_TOKEN / VENDEDOR_TOKEN en .env).
+
+@baseUrl = http://localhost:5000/api
+@contentType = application/json
+@adminToken = dev-admin-token
+@vendedorToken = dev-vendedor-token
+
+### ─────────────────────────── Salud ───────────────────────────
+
+GET {{baseUrl}}/health
+
+### ─────────────────────────── Productos ───────────────────────────
+
+### Listar productos (público, ordenados por popularidad)
+GET {{baseUrl}}/products
+
+### Buscar por nombre con paginación
+GET {{baseUrl}}/products?q=latte&page=1&limit=10
+
+### Búsqueda sin resultados → 200 con data vacía
+GET {{baseUrl}}/products?q=xyzabc123
+
+### Paginación inválida → 400
+GET {{baseUrl}}/products?page=-1&limit=abc
+
+### Crear producto con precio único (admin) → 201
+# @name crearProducto
+POST {{baseUrl}}/products
+Content-Type: {{contentType}}
+X-User-Role: admin
+
+{
+  "name": "Galleta artesanal",
+  "category": "postre",
+  "price": 25,
+  "stock": 40
+}
+
+### Crear bebida con 3 tamaños (admin) → 201
+# @name crearBebida
+POST {{baseUrl}}/products
+Content-Type: {{contentType}}
+X-User-Role: admin
+
+{
+  "name": "Espresso doble",
+  "category": "bebida",
+  "sizes": [
+    { "name": "Chico", "price": 35 },
+    { "name": "Mediano", "price": 40 },
+    { "name": "Grande", "price": 45 }
+  ],
+  "stock": 30
+}
+
+### Crear producto sin token → 401
+POST {{baseUrl}}/products
+Content-Type: {{contentType}}
+
+{ "name": "Café", "price": 5, "stock": 100 }
+
+### Token Bearer inválido → 401
+POST {{baseUrl}}/products
+Content-Type: {{contentType}}
+Authorization: Bearer invalid_token_abc123
+
+{ "name": "Café", "price": 5, "stock": 100 }
+
+### Ver clientes con token Bearer de vendedor (alternativa a X-User-Role) → 200
+GET {{baseUrl}}/customers
+Authorization: Bearer {{vendedorToken}}
+
+### Vendedor intenta crear producto → 403
+POST {{baseUrl}}/products
+Content-Type: {{contentType}}
+X-User-Role: vendedor
+
+{ "name": "Café", "price": 5, "stock": 100 }
+
+### Producto sin nombre y precio negativo → 422
+POST {{baseUrl}}/products
+Content-Type: {{contentType}}
+X-User-Role: admin
+
+{ "price": -5, "stock": 100 }
+
+### Actualizar precio y stock (admin) → 200
+PUT {{baseUrl}}/products/{{crearProducto.response.body.id}}
+Content-Type: {{contentType}}
+X-User-Role: admin
+
+{ "price": 28, "stock": 35 }
+
+### Actualizar producto que no existe → 404
+PUT {{baseUrl}}/products/000000000000000000000000
+Content-Type: {{contentType}}
+X-User-Role: admin
+
+{ "price": 10 }
+
+### ─────────────────────────── Clientes ───────────────────────────
+
+### Listar clientes (vendedor o admin)
+GET {{baseUrl}}/customers
+X-User-Role: vendedor
+
+### Buscar cliente por nombre, correo o teléfono
+GET {{baseUrl}}/customers?q=ana
+X-User-Role: vendedor
+
+### Registrar cliente con correo → 201 (purchasesCount = 0)
+# @name crearCliente
+POST {{baseUrl}}/customers
+Content-Type: {{contentType}}
+X-User-Role: vendedor
+
+{
+  "name": "María González",
+  "phoneOrEmail": "maria.gonzalez@example.com"
+}
+
+### Registrar cliente con teléfono → 201
+POST {{baseUrl}}/customers
+Content-Type: {{contentType}}
+X-User-Role: vendedor
+
+{
+  "name": "Pedro Ruiz",
+  "phoneOrEmail": "+524491112233"
+}
+
+### Cliente duplicado (mismo correo) → 400 con existingCustomerId
+POST {{baseUrl}}/customers
+Content-Type: {{contentType}}
+X-User-Role: vendedor
+
+{
+  "name": "Otra María",
+  "phoneOrEmail": "maria.gonzalez@example.com"
+}
+
+### Nombre muy corto y contacto inválido → 422
+POST {{baseUrl}}/customers
+Content-Type: {{contentType}}
+X-User-Role: vendedor
+
+{
+  "name": "X",
+  "phoneOrEmail": "noesunEmailValido"
+}
+
+### Detalle de cliente (incluye nextDiscountPercent)
+GET {{baseUrl}}/customers/{{crearCliente.response.body.id}}
+X-User-Role: vendedor
+
+### ─────────────────────────── Ventas ───────────────────────────
+
+### Venta sin cliente → 201, sin descuento
+POST {{baseUrl}}/sales
+Content-Type: {{contentType}}
+X-User-Role: vendedor
+
+{
+  "customerId": null,
+  "paymentMethod": "cash",
+  "items": [
+    { "productId": "{{crearProducto.response.body.id}}", "quantity": 2 }
+  ]
+}
+
+### Venta con cliente nuevo (0 compras) → 0%; su purchasesCount sube a 1
+# @name ventaCliente
+POST {{baseUrl}}/sales
+Content-Type: {{contentType}}
+X-User-Role: vendedor
+
+{
+  "customerId": "{{crearCliente.response.body.id}}",
+  "paymentMethod": "card",
+  "items": [
+    { "productId": "{{crearBebida.response.body.id}}", "quantity": 1, "size": "Grande" },
+    { "productId": "{{crearProducto.response.body.id}}", "quantity": 1 }
+  ]
+}
+
+### Segunda compra del mismo cliente (1 compra previa) → 5% de descuento
+POST {{baseUrl}}/sales
+Content-Type: {{contentType}}
+X-User-Role: vendedor
+
+{
+  "customerId": "{{crearCliente.response.body.id}}",
+  "items": [
+    { "productId": "{{crearProducto.response.body.id}}", "quantity": 4 }
+  ]
+}
+
+### Ver venta con ticket
+GET {{baseUrl}}/sales/{{ventaCliente.response.body.saleId}}
+X-User-Role: vendedor
+
+### Historial de compras del cliente
+GET {{baseUrl}}/customers/{{crearCliente.response.body.id}}/sales
+X-User-Role: vendedor
+
+### Stock insuficiente → 400 (no se guarda nada)
+POST {{baseUrl}}/sales
+Content-Type: {{contentType}}
+X-User-Role: vendedor
+
+{
+  "items": [
+    { "productId": "{{crearProducto.response.body.id}}", "quantity": 1000 }
+  ]
+}
+
+### Bebida sin tamaño → 422
+POST {{baseUrl}}/sales
+Content-Type: {{contentType}}
+X-User-Role: vendedor
+
+{
+  "items": [
+    { "productId": "{{crearBebida.response.body.id}}", "quantity": 1 }
+  ]
+}
+
+### Items vacío → 422
+POST {{baseUrl}}/sales
+Content-Type: {{contentType}}
+X-User-Role: vendedor
+
+{ "items": [] }
+
+### Cantidad 0 y método de pago inválido → 422
+POST {{baseUrl}}/sales
+Content-Type: {{contentType}}
+X-User-Role: vendedor
+
+{
+  "paymentMethod": "bitcoin",
+  "items": [
+    { "productId": "{{crearProducto.response.body.id}}", "quantity": 0 }
+  ]
+}
+
+### Producto que no existe → 400
+POST {{baseUrl}}/sales
+Content-Type: {{contentType}}
+X-User-Role: vendedor
+
+{
+  "items": [
+    { "productId": "000000000000000000000000", "quantity": 1 }
+  ]
+}
+
+### Cliente que no existe → 400
+POST {{baseUrl}}/sales
+Content-Type: {{contentType}}
+X-User-Role: vendedor
+
+{
+  "customerId": "000000000000000000000000",
+  "items": [
+    { "productId": "{{crearProducto.response.body.id}}", "quantity": 1 }
+  ]
+}
+
+### Venta que no existe → 404
+GET {{baseUrl}}/sales/000000000000000000000000
+X-User-Role: vendedor
+
+### ─────────────────────────── Limpieza ───────────────────────────
+
+### Eliminar producto de prueba (admin) → 200
+DELETE {{baseUrl}}/products/{{crearProducto.response.body.id}}
+X-User-Role: admin
+
+### Eliminar bebida de prueba (admin) → 200
+DELETE {{baseUrl}}/products/{{crearBebida.response.body.id}}
+X-User-Role: admin
+
+### Eliminar cliente de prueba (admin) → 200
+DELETE {{baseUrl}}/customers/{{crearCliente.response.body.id}}
+X-User-Role: admin

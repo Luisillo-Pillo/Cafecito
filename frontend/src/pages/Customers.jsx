@@ -1,59 +1,64 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../api";
 import CustomerForm from "../components/CustomerForm";
+import Ticket from "../components/Ticket";
+import { currency, dateTimeFormat, previewDiscount, discountLabel } from "../utils";
 
-const currency = new Intl.NumberFormat("es-MX", {
-  style: "currency",
-  currency: "MXN",
-});
-
-const dateFormat = new Intl.DateTimeFormat("es-MX", {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
-
-function Customers() {
+function Customers({ role }) {
   const [customers, setCustomers] = useState([]);
   const [status, setStatus] = useState("loading"); // loading | ready | error
   const [query, setQuery] = useState("");
   const [showForm, setShowForm] = useState(false);
 
   const [selected, setSelected] = useState(null);
-  const [orders, setOrders] = useState([]);
-  const [ordersStatus, setOrdersStatus] = useState("idle"); // idle | loading | ready | error
+  const [sales, setSales] = useState([]);
+  const [salesStatus, setSalesStatus] = useState("idle"); // idle | loading | ready | error
+  const [openSale, setOpenSale] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [actionError, setActionError] = useState(null);
 
-  const loadCustomers = () => {
+  // Búsqueda en el servidor (GET /customers?q=), con debounce de 300ms
+  const loadCustomers = useCallback((q = "") => {
     setStatus("loading");
-    apiFetch("/customers")
-      .then((data) => {
-        setCustomers(data);
+    const params = new URLSearchParams({ limit: "100" });
+    if (q.trim()) params.set("q", q.trim());
+    return apiFetch(`/customers?${params}`)
+      .then((res) => {
+        setCustomers(res.data);
         setStatus("ready");
       })
       .catch(() => setStatus("error"));
-  };
+  }, []);
 
-  useEffect(loadCustomers, []);
+  useEffect(() => {
+    const timeout = setTimeout(() => loadCustomers(query), 300);
+    return () => clearTimeout(timeout);
+  }, [query, loadCustomers]);
 
   const selectCustomer = (customer) => {
     setSelected(customer);
-    setOrdersStatus("loading");
-    apiFetch(`/customers/${customer._id}/orders`)
-      .then((data) => {
-        setOrders(data);
-        setOrdersStatus("ready");
+    setConfirmDelete(false);
+    setActionError(null);
+    setSalesStatus("loading");
+    apiFetch(`/customers/${customer.id}/sales?limit=50`)
+      .then((res) => {
+        setSales(res.data);
+        setSalesStatus("ready");
       })
-      .catch(() => setOrdersStatus("error"));
+      .catch(() => setSalesStatus("error"));
   };
 
-  const filtered = customers.filter((customer) => {
-    const q = query.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      customer.name.toLowerCase().includes(q) ||
-      customer.email.toLowerCase().includes(q) ||
-      customer.phone.toLowerCase().includes(q)
-    );
-  });
+  const deleteCustomer = async () => {
+    setActionError(null);
+    try {
+      await apiFetch(`/customers/${selected.id}`, { method: "DELETE" });
+      setSelected(null);
+      setConfirmDelete(false);
+      loadCustomers(query);
+    } catch (err) {
+      setActionError(err.message);
+    }
+  };
 
   return (
     <main className="pos-main">
@@ -61,7 +66,7 @@ function Customers() {
         <div className="customers-toolbar">
           <input
             type="text"
-            placeholder="Buscar cliente..."
+            placeholder="Buscar cliente por nombre, correo o teléfono..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -74,32 +79,43 @@ function Customers() {
           <CustomerForm
             onCreated={(customer) => {
               setShowForm(false);
-              loadCustomers();
+              loadCustomers(query);
               selectCustomer(customer);
             }}
             onCancel={() => setShowForm(false)}
           />
         )}
 
-        {status === "loading" && <p className="pos-empty">Cargando clientes...</p>}
+        {status === "loading" && customers.length === 0 && (
+          <p className="pos-empty">Cargando clientes...</p>
+        )}
         {status === "error" && <p className="pos-empty">No se pudo conectar con la API.</p>}
-        {status === "ready" && filtered.length === 0 && (
-          <p className="pos-empty">No hay clientes registrados todavía.</p>
+        {status === "ready" && customers.length === 0 && (
+          <p className="pos-empty">
+            {query ? `No se encontraron clientes para "${query}".` : "No hay clientes registrados todavía."}
+          </p>
         )}
 
         <ul className="customers-list">
-          {filtered.map((customer) => (
-            <li key={customer._id}>
+          {customers.map((customer) => (
+            <li key={customer.id}>
               <button
                 type="button"
                 className={
-                  "customers-list-item" +
-                  (selected?._id === customer._id ? " is-active" : "")
+                  "customers-list-item" + (selected?.id === customer.id ? " is-active" : "")
                 }
                 onClick={() => selectCustomer(customer)}
               >
-                <span>{customer.name}</span>
-                <span className="pos-card-price">{customer.email}</span>
+                <span className="customers-list-main">
+                  <span>{customer.name}</span>
+                  <span className="pos-card-price">{customer.phoneOrEmail}</span>
+                </span>
+                <span className="customers-list-meta">
+                  {customer.purchasesCount} {customer.purchasesCount === 1 ? "compra" : "compras"}
+                  <span className="pos-discount-badge">
+                    {previewDiscount(customer.purchasesCount)}%
+                  </span>
+                </span>
               </button>
             </li>
           ))}
@@ -115,39 +131,74 @@ function Customers() {
           <>
             <div className="customer-detail">
               <strong>{selected.name}</strong>
-              <span>{selected.email}</span>
-              <span>{selected.phone}</span>
+              <span>{selected.phoneOrEmail}</span>
+              <span>
+                {selected.purchasesCount} compras ·{" "}
+                {discountLabel(previewDiscount(selected.purchasesCount))} en su próxima compra
+              </span>
+
+              {role === "admin" && (
+                <div className="customer-admin-actions">
+                  {confirmDelete ? (
+                    <>
+                      <span>¿Eliminar este cliente?</span>
+                      <button type="button" className="danger" onClick={deleteCustomer}>
+                        Sí, eliminar
+                      </button>
+                      <button type="button" onClick={() => setConfirmDelete(false)}>
+                        No
+                      </button>
+                    </>
+                  ) : (
+                    <button type="button" onClick={() => setConfirmDelete(true)}>
+                      Eliminar cliente
+                    </button>
+                  )}
+                </div>
+              )}
+              {actionError && <p className="form-error">{actionError}</p>}
             </div>
 
-            {ordersStatus === "loading" && <p className="pos-empty">Cargando...</p>}
-            {ordersStatus === "error" && (
+            {salesStatus === "loading" && <p className="pos-empty">Cargando...</p>}
+            {salesStatus === "error" && (
               <p className="pos-empty">No se pudo cargar el historial.</p>
             )}
-            {ordersStatus === "ready" && orders.length === 0 && (
+            {salesStatus === "ready" && sales.length === 0 && (
               <p className="pos-empty">Sin compras registradas.</p>
             )}
 
             <ul className="pos-cart-list">
-              {orders.map((order) => (
-                <li key={order._id} className="order-item">
-                  <div className="pos-cart-item-info">
-                    <span>{dateFormat.format(new Date(order.createdAt))}</span>
-                    <span className="pos-cart-item-price">
-                      {order.items
-                        .map(
-                          (item) =>
-                            `${item.name}${item.size ? ` (${item.size})` : ""} x${item.qty}`
-                        )
-                        .join(", ")}
-                    </span>
-                  </div>
-                  <strong>{currency.format(order.total)}</strong>
+              {sales.map((sale) => (
+                <li key={sale.saleId}>
+                  <button type="button" className="order-item" onClick={() => setOpenSale(sale)}>
+                    <div className="pos-cart-item-info">
+                      <span>{dateTimeFormat.format(new Date(sale.createdAt))}</span>
+                      <span className="pos-cart-item-price">
+                        {sale.items
+                          .map(
+                            (item) =>
+                              `${item.productName}${item.size ? ` (${item.size})` : ""} x${item.quantity}`
+                          )
+                          .join(", ")}
+                      </span>
+                      {sale.discountPercent > 0 && (
+                        <span className="pos-cart-item-price">
+                          Descuento {sale.discountPercent}%
+                        </span>
+                      )}
+                    </div>
+                    <strong>{currency.format(sale.total)}</strong>
+                  </button>
                 </li>
               ))}
             </ul>
           </>
         )}
       </aside>
+
+      {openSale && (
+        <Ticket sale={openSale} onClose={() => setOpenSale(null)} closeLabel="Cerrar" />
+      )}
     </main>
   );
 }
