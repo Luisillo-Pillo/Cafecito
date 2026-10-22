@@ -1,8 +1,6 @@
 import { normalize } from "./utils";
 
-// Reglas de palabras clave más específicas primero, para que un nombre como
-// "Pastel de zanahoria" tome el ícono de zanahoria antes que el genérico de pastel,
-// o "Chai Latte" el de té antes que el genérico de café.
+// El orden importa: lo específico va primero ("Pastel de zanahoria" → 🥕, "Chai Latte" → 🍵)
 const KEYWORD_ICONS = [
   { keywords: ["zanahoria"], icon: "🥕" },
   { keywords: ["pastel", "cake"], icon: "🍰" },

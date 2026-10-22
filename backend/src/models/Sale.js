@@ -1,16 +1,12 @@
 const { Schema, model } = require("mongoose");
 const { PAYMENT_METHODS } = require("../config/constants");
 
-/**
- * Detalle de venta (SaleItem del Kit). Guarda una "foto" del nombre y precio
- * del producto al momento de vender: si el producto se edita después,
- * la venta histórica no cambia.
- */
+// Nombre y precio se copian al vender para que editar el producto no altere ventas pasadas
 const saleItemSchema = new Schema(
   {
     productId: { type: Schema.Types.ObjectId, ref: "Product", required: true },
     productNameSnapshot: { type: String, required: true },
-    size: { type: String }, // solo en bebidas
+    size: { type: String },
     unitPriceSnapshot: { type: Number, required: true, min: 0 },
     quantity: { type: Number, required: true, min: 1 },
     lineTotal: { type: Number, required: true, min: 0 },
@@ -18,10 +14,6 @@ const saleItemSchema = new Schema(
   { _id: false }
 );
 
-/**
- * Venta. subtotal, descuento y total los calcula SIEMPRE el backend
- * (services/sale.service.js); nunca se confía en montos enviados por el cliente.
- */
 const saleSchema = new Schema(
   {
     customerId: { type: Schema.Types.ObjectId, ref: "Customer", default: null },

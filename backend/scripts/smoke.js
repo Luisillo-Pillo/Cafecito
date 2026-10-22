@@ -1,13 +1,5 @@
-/**
- * Smoke test: verifica que un backend YA LEVANTADO responde lo básico.
- * Lo usa el pipeline de CI (.github/workflows/ci.yml) después del build.
- * (Se llama smoke.js y no smoke-test.js para que `node --test` no lo tome como prueba.)
- *
- *   API_URL=http://localhost:5000/api npm run smoke --workspace=backend
- *
- * OJO: crea un producto, un cliente y una venta de prueba (y borra el producto
- * y el cliente al final). Úsalo contra una base de pruebas, no contra producción.
- */
+// Smoke test contra una API ya levantada. Crea datos de prueba: no usar contra producción.
+// Se llama smoke.js (no *-test.js) para que `node --test` no lo ejecute.
 const API_URL = process.env.API_URL ?? "http://localhost:5000/api";
 const ADMIN = { Authorization: `Bearer ${process.env.ADMIN_TOKEN || "dev-admin-token"}` };
 const VENDEDOR = { Authorization: `Bearer ${process.env.VENDEDOR_TOKEN || "dev-vendedor-token"}` };

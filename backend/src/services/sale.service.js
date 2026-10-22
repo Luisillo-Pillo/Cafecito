@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Sale = require("../models/Sale");
 const Product = require("../models/Product");
 const Customer = require("../models/Customer");
@@ -6,7 +7,6 @@ const { HttpError, validationError, notFound } = require("../utils/httpError");
 const { isValidId, isPositiveInteger, round2 } = require("../utils/validation");
 const { calculateDiscount } = require("./discount.service");
 
-/** Paso 1: forma del body (422 si algo no tiene el formato esperado). */
 function validateSaleBody(body = {}) {
   const details = [];
   const { items, paymentMethod } = body;
@@ -42,28 +42,31 @@ function validateSaleBody(body = {}) {
   if (details.length > 0) throw validationError(details);
 }
 
-/** Paso 2: cliente opcional. Si se envía y no existe se rechaza (integridad de datos). */
-async function resolveCustomer(customerId) {
+// Decisión del equipo: un customerId inexistente se rechaza (400) en vez de vender sin cliente
+async function resolveCustomer(customerId, session) {
   if (customerId === undefined || customerId === null || customerId === "") return null;
 
-  const customer = isValidId(customerId) ? await Customer.findById(customerId) : null;
+  const customer = isValidId(customerId)
+    ? await Customer.findById(customerId).session(session ?? null)
+    : null;
   if (!customer) {
     throw new HttpError(400, "Cliente no encontrado", {
-      details: [{ customerId, message: "El cliente no existe" }],
+      details: [{ field: "customerId", message: "El cliente no existe" }],
     });
   }
   return customer;
 }
 
-/** Paso 3: cada producto existe, está disponible y (si es bebida) trae un tamaño válido. */
-async function resolveItems(items) {
+async function resolveItems(items, session) {
   const ids = items.map((item) => item.productId).filter(isValidId);
-  const products = await Product.find({ _id: { $in: ids } });
+  const products = await Product.find({ _id: { $in: ids } }).session(session ?? null);
   const productMap = new Map(products.map((p) => [String(p._id), p]));
 
-  const missing = items
-    .filter((item) => !productMap.has(item.productId))
-    .map((item) => ({ productId: item.productId, message: "El producto no existe" }));
+  const missing = items.flatMap((item, i) =>
+    productMap.has(item.productId)
+      ? []
+      : [{ field: `items[${i}].productId`, productId: item.productId, message: "El producto no existe" }]
+  );
   if (missing.length > 0) {
     throw new HttpError(400, "Producto no encontrado", { details: missing });
   }
@@ -74,6 +77,7 @@ async function resolveItems(items) {
     const product = productMap.get(item.productId);
     if (!product.available) {
       unavailable.push({
+        field: `items[${i}].productId`,
         productId: product.id,
         productName: product.name,
         message: `${product.name} no está disponible por ahora`,
@@ -97,7 +101,7 @@ async function resolveItems(items) {
       }
     }
 
-    return { product, size, unitPrice, quantity: item.quantity };
+    return { index: i, product, size, unitPrice, quantity: item.quantity };
   });
 
   if (sizeErrors.length > 0) throw validationError(sizeErrors);
@@ -107,12 +111,12 @@ async function resolveItems(items) {
   return lines;
 }
 
-// Suma cantidades por producto: dos tamaños de la misma bebida comparten stock
+// Dos tamaños de la misma bebida comparten stock
 function quantityByProduct(lines) {
   const totals = new Map();
   for (const line of lines) {
     const key = String(line.product._id);
-    const current = totals.get(key) ?? { product: line.product, quantity: 0 };
+    const current = totals.get(key) ?? { index: line.index, product: line.product, quantity: 0 };
     current.quantity += line.quantity;
     totals.set(key, current);
   }
@@ -121,7 +125,8 @@ function quantityByProduct(lines) {
 
 function insufficientStockError(entries) {
   return new HttpError(400, "Stock insuficiente", {
-    details: entries.map(({ product, quantity, available }) => ({
+    details: entries.map(({ index, product, quantity, available }) => ({
+      field: `items[${index}].quantity`,
       productId: product.id,
       productName: product.name,
       available,
@@ -131,15 +136,9 @@ function insufficientStockError(entries) {
   });
 }
 
-/**
- * Paso 4: valida y descuenta stock. Si algún producto no alcanza se rechaza
- * TODA la venta (no hay ventas parciales).
- *
- * El descuento es atómico por producto (`stock >= cantidad` en el mismo update),
- * así dos ventas simultáneas no pueden dejar el stock negativo. Si un producto
- * falla a mitad del proceso, se regresa el stock de los que ya se descontaron.
- */
-async function reserveStock(lines) {
+// Venta todo-o-nada: el update condicional (stock >= cantidad) evita stock negativo con ventas
+// simultáneas, y si un producto falla se regresa el stock de los ya descontados.
+async function reserveStock(lines, session) {
   const totals = quantityByProduct(lines);
 
   const insufficient = totals
@@ -151,11 +150,12 @@ async function reserveStock(lines) {
   for (const entry of totals) {
     const result = await Product.updateOne(
       { _id: entry.product._id, stock: { $gte: entry.quantity } },
-      { $inc: { stock: -entry.quantity } }
+      { $inc: { stock: -entry.quantity } },
+      { session }
     );
     if (result.modifiedCount === 0) {
-      await releaseStock(reserved);
-      const fresh = await Product.findById(entry.product._id);
+      if (!session) await releaseStock(reserved);
+      const fresh = await Product.findById(entry.product._id).session(session ?? null);
       throw insufficientStockError([{ ...entry, available: fresh?.stock ?? 0 }]);
     }
     reserved.push(entry);
@@ -173,7 +173,6 @@ async function releaseStock(reserved) {
 
 const PAYMENT_LABELS = { cash: "Efectivo", card: "Tarjeta", transfer: "Transferencia" };
 
-/** Convierte una venta guardada en la respuesta del contrato (incluye el ticket). */
 function toSaleResponse(sale) {
   const saleId = String(sale._id);
   const items = sale.items.map((item) => ({
@@ -186,6 +185,7 @@ function toSaleResponse(sale) {
   }));
 
   return {
+    id: saleId,
     saleId,
     customerId: sale.customerId ? String(sale.customerId) : null,
     customerName: sale.customerNameSnapshot ?? null,
@@ -218,17 +218,7 @@ function toSaleResponse(sale) {
   };
 }
 
-/**
- * Registra una venta (POST /api/sales). Orden del flujo del Kit:
- * validar body → cliente → productos → stock → calcular → guardar →
- * incrementar purchasesCount del cliente.
- */
-async function createSale(body) {
-  validateSaleBody(body);
-  const customer = await resolveCustomer(body.customerId);
-  const lines = await resolveItems(body.items);
-  const reserved = await reserveStock(lines);
-
+function buildSaleDocument(customer, lines, paymentMethod) {
   const items = lines.map((line) => ({
     productId: line.product._id,
     productNameSnapshot: line.product.name,
@@ -239,34 +229,67 @@ async function createSale(body) {
   }));
 
   const subtotal = round2(items.reduce((sum, item) => sum + item.lineTotal, 0));
-  // El descuento se basa en las compras ANTERIORES a esta venta
+  // Se basa en las compras anteriores a esta venta y se aplica a toda la venta
   const discountPercent = customer ? calculateDiscount(customer.purchasesCount) : 0;
   const discountAmount = round2(subtotal * (discountPercent / 100));
-  const total = round2(subtotal - discountAmount);
+
+  return {
+    customerId: customer?._id ?? null,
+    customerNameSnapshot: customer?.name ?? null,
+    paymentMethod: paymentMethod ?? "cash",
+    items,
+    subtotal,
+    discountPercent,
+    discountAmount,
+    total: round2(subtotal - discountAmount),
+  };
+}
+
+async function registerSale(body, session) {
+  const customer = await resolveCustomer(body.customerId, session);
+  const lines = await resolveItems(body.items, session);
+  const reserved = await reserveStock(lines, session);
+  const doc = buildSaleDocument(customer, lines, body.paymentMethod);
+
+  if (session) {
+    const [sale] = await Sale.create([doc], { session });
+    if (customer) {
+      await Customer.updateOne({ _id: customer._id }, { $inc: { purchasesCount: 1 } }, { session });
+    }
+    return sale;
+  }
 
   let sale;
   try {
-    sale = await Sale.create({
-      customerId: customer?._id ?? null,
-      customerNameSnapshot: customer?.name ?? null,
-      paymentMethod: body.paymentMethod ?? "cash",
-      items,
-      subtotal,
-      discountPercent,
-      discountAmount,
-      total,
-    });
+    sale = await Sale.create(doc);
+    if (customer) {
+      await Customer.updateOne({ _id: customer._id }, { $inc: { purchasesCount: 1 } });
+    }
   } catch (err) {
-    // Si la venta no se pudo guardar (ej. se cayó la BD), se regresa el stock
+    if (sale) await Sale.deleteOne({ _id: sale._id });
     await releaseStock(reserved);
     throw err;
   }
+  return sale;
+}
 
-  // Una venta sin cliente NO incrementa el contador de nadie
-  if (customer) {
-    await Customer.updateOne({ _id: customer._id }, { $inc: { purchasesCount: 1 } });
+let transactionsSupported;
+
+async function supportsTransactions() {
+  if (transactionsSupported === undefined) {
+    const hello = await mongoose.connection.db.admin().command({ hello: 1 });
+    transactionsSupported = Boolean(hello.setName || hello.msg === "isdbgrid");
   }
+  return transactionsSupported;
+}
 
+// Regla del Kit: si falla la base de datos al guardar → 500 y no se guarda nada. Con réplica
+// (Atlas) todo va en una transacción; un MongoDB standalone no las soporta y se deshace a mano.
+async function createSale(body) {
+  validateSaleBody(body);
+  const sale = (await supportsTransactions())
+    ? await mongoose.connection.transaction((session) => registerSale(body, session))
+    : await registerSale(body);
   return toSaleResponse(sale);
 }
 
@@ -278,7 +301,10 @@ async function getSale(id) {
 
 async function listSales({ customerId, skip, limit }) {
   const filter = {};
-  if (customerId !== undefined) filter.customerId = isValidId(customerId) ? customerId : null;
+  if (customerId !== undefined) {
+    if (!isValidId(customerId)) return { data: [], total: 0 };
+    filter.customerId = customerId;
+  }
 
   const [sales, total] = await Promise.all([
     Sale.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
@@ -287,4 +313,4 @@ async function listSales({ customerId, skip, limit }) {
   return { data: sales.map(toSaleResponse), total };
 }
 
-module.exports = { createSale, getSale, listSales, toSaleResponse };
+module.exports = { createSale, getSale, listSales };

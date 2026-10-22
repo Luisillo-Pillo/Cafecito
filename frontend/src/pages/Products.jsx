@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { apiFetch } from "../api";
+import { apiFetch } from "../services/api";
 import { getProductIcon } from "../productIcon";
 import { getProductImage } from "../productImages";
 import { currency, normalize } from "../utils";
@@ -27,7 +27,6 @@ const EMPTY_FORM = {
   available: true,
 };
 
-// Producto de la API → valores del formulario (los inputs trabajan con strings)
 function toForm(product) {
   return {
     name: product.name,
@@ -43,7 +42,6 @@ function toForm(product) {
   };
 }
 
-// Formulario → body del contrato (POST/PUT /api/products)
 function toBody(form) {
   const body = {
     name: form.name.trim(),
@@ -112,7 +110,7 @@ function ProductForm({ product, onSaved, onCancel }) {
 
       <label>
         Nombre
-        <input value={form.name} onChange={set("name")} minLength={2} maxLength={100} required />
+        <input value={form.name} onChange={set("name")} maxLength={100} required />
       </label>
 
       <label>
@@ -190,10 +188,6 @@ function ProductForm({ product, onSaved, onCancel }) {
   );
 }
 
-/**
- * Administración de productos (solo rol admin): crear, editar y eliminar.
- * Usa POST/PUT/DELETE /api/products con el header X-User-Role: admin.
- */
 function Products() {
   const [products, setProducts] = useState([]);
   const [status, setStatus] = useState("loading");

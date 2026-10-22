@@ -2,7 +2,7 @@ import { useState } from "react";
 import Pos from "./pages/Pos";
 import Customers from "./pages/Customers";
 import Products from "./pages/Products";
-import { getRole, setRole as storeRole } from "./api";
+import { getRole, setRole as storeRole } from "./services/api";
 import logo from "./assets/products/americano.svg";
 
 const VIEWS = [

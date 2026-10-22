@@ -1,11 +1,6 @@
 import { useState } from "react";
-import { apiFetch } from "../api";
+import { apiFetch } from "../services/api";
 
-/**
- * Registra un cliente (POST /api/customers) con nombre y un solo dato de
- * contacto: correo o teléfono con lada (+52...). Muestra los errores del
- * backend (422 de validación o 400 si el cliente ya existe).
- */
 function CustomerForm({ onCreated, onCancel }) {
   const [form, setForm] = useState({ name: "", phoneOrEmail: "" });
   const [error, setError] = useState(null);

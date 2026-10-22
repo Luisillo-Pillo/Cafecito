@@ -1,8 +1,4 @@
-/**
- * Envuelve un handler async para que cualquier rechazo de la promesa
- * llegue al middleware de errores en vez de tumbar el proceso
- * (Express 4 no hace esto automáticamente).
- */
+// Express 4 no envía los rechazos de promesas al middleware de errores
 const asyncHandler = (fn) => (req, res, next) => {
   fn(req, res, next).catch(next);
 };

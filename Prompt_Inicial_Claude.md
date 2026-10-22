@@ -44,16 +44,16 @@ backend/
 │   └── smoke.js              # npm run smoke: smoke test contra una API levantada (API_URL)
 ├── test/
 │   ├── discount.test.js      # pruebas unitarias de la regla de descuento
-│   └── api.test.js           # 29 pruebas de integración (contrato + edge cases), requiere TEST_MONGODB_URI
+│   └── api.test.js           # 32 pruebas de integración (contrato + edge cases), requiere TEST_MONGODB_URI
 └── src/
     ├── index.js              # entry point: carga .env, conecta a DB, levanta Express
     ├── app.js                # createApp(): middlewares, rutas, 404 y error handler
     ├── config/
     │   ├── db.js             # connectDB() / disconnectDB() con Mongoose
-    │   └── constants.js      # STORE_NAME, ROLES, PAYMENT_METHODS, PRODUCT_CATEGORIES
+    │   └── constants.js      # STORE_NAME, ROLES, PAYMENT_METHODS, PRODUCT_CATEGORIES, DRINK_SIZES_COUNT
     ├── middleware/
     │   ├── asyncHandler.js   # envuelve handlers async para propagar errores a Express
-    │   ├── auth.js           # requireRole(...) / adminOnly / staff (header X-User-Role)
+    │   ├── auth.js           # adminOnly / staff (header X-User-Role o Bearer)
     │   └── errorHandler.js   # 404 genérico + manejador central de errores
     ├── utils/
     │   ├── httpError.js      # HttpError(status, error, extra), validationError(), notFound()
@@ -87,11 +87,12 @@ backend/
 **`src/app.js` — `createApp()`:**
 - Orden de middlewares: `helmet()` → `cors({ origin: process.env.CORS_ORIGIN })` → `express.json()` → `morgan("dev"` en desarrollo, `"combined"` en producción, desactivado con `NODE_ENV=test`).
 - Rutas montadas en `/api` (health), `/api/products`, `/api/customers`, `/api/sales`.
-- `notFoundHandler` al final: `404 { error: "Ruta no encontrada" }`.
-- `errorHandler` (4 argumentos): `HttpError` → su status y cuerpo; JSON mal formado → `400`; índice único duplicado (`err.code === 11000`) → `400`; cualquier otro → loggea y responde `500 { error: "Error interno del servidor" }`.
+- **Todo error** responde `{ error, details: [{ field, message }] }` (forma del contrato), incluidos 401, 403, 404, 500 y JSON mal formado.
+- `notFoundHandler` al final: `404 { error: "Ruta no encontrada", details }`.
+- `errorHandler` (4 argumentos): `HttpError` → su status y cuerpo; JSON mal formado → `400`; otros 4xx de Express/body-parser (ej. `413`) → su status; índice único duplicado (`err.code === 11000`) → `400`; cualquier otro → loggea y responde `500 { error: "Error interno del servidor" }`.
 
 **`src/config/db.js`:**
-- `connectDB(uri?)` lee `MONGODB_URI` (o `DB_CONNECTION_STRING`, el nombre del Kit), o recibe la URI como parámetro (pruebas); si no hay ninguna, lanza un `Error` explicativo (apunta a `.env.example`) en vez de dejar que Mongoose falle silenciosamente.
+- `connectDB(uri?)` lee `DB_CONNECTION_STRING` (nombre del Kit; también acepta `MONGODB_URI`), o recibe la URI como parámetro (pruebas); si no hay ninguna, lanza un `Error` explicativo (apunta a `.env.example`) en vez de dejar que Mongoose falle silenciosamente.
 - Loggea eventos de conexión (`connected`, `error`, `disconnected`) por consola con prefijo `[mongo]`.
 - `disconnectDB()` para cierres limpios (tests, scripts).
 
@@ -102,12 +103,12 @@ backend/
 - `Authorization: Bearer <token>`: el rol sale del token (`ADMIN_TOKEN` / `VENDEDOR_TOKEN` del `.env`; fuera de producción valen por default `dev-admin-token` y `dev-vendedor-token`). Token mal formado o desconocido → `401 { error: "Token inválido" }`.
 - Sin `Authorization`, se acepta el "header estático para desarrollo" que permite el Kit: `X-User-Role: admin | vendedor` (lo usa el frontend). Rol desconocido → `401 { error: "Credencial inválida" }`.
 - Sin ninguna credencial → `401 { error: "Autenticación requerida" }`; rol sin permiso → `403 { error: "Permisos insuficientes" }`.
-- `requireRole(...roles)` con atajos `adminOnly` y `staff` (admin o vendedor). Se puede cambiar por JWT más adelante sin tocar las rutas.
+- `requireRole(...roles)` (interno) expone los atajos `adminOnly` y `staff` (admin o vendedor). Se puede cambiar por JWT más adelante sin tocar las rutas.
 
 **`src/models/Product.js`** — esquema Mongoose `Product`:
 | Campo         | Tipo              | Reglas                                                        |
 |---------------|-------------------|------------------------------------------------------------------|
-| `name`        | String            | requerido, trim, 2–100 caracteres                                |
+| `name`        | String            | requerido, trim, máximo 100 caracteres (regla del contrato)      |
 | `description` | String            | default `""` (guarda los ingredientes)                           |
 | `category`    | String            | enum `["bebida", "postre", "snack", "otro"]`, default `"otro"`    |
 | `price`       | Number            | requerido (> 0) **solo si `category !== "bebida"`**               |
@@ -141,7 +142,7 @@ Las bebidas se venden por tamaño (Chico/Mediano/Grande, cada uno con su propio 
 |---|---|---|
 | `GET /api/health` | público | `{ status: "ok", db, timestamp }` |
 | `GET /api/products?q=&page=&limit=` | público | `{ data, total, page, limit }` ordenado por **popularidad** (unidades vendidas sumando `items.quantity` de `Sale`; empate alfabético). `q` busca por nombre (regex escapada, sin mayúsculas). `limit` default 20, máx. 100. Sin resultados → `200` con `data: []` y `message` |
-| `GET /api/products/:id` | público | producto; `404 { error, id }` si no existe (o el id es inválido) |
+| `GET /api/products/:id` | público | producto; `404 { error, id, details }` si no existe (o el id es inválido) |
 | `POST /api/products` | admin | `201`; `422 { error: "Validación fallida", details: [{ field, message }] }` |
 | `PUT /api/products/:id` | admin | actualización parcial (se valida el producto ya combinado); `200`; `404`; `422` |
 | `DELETE /api/products/:id` | admin | `200 { message, id }`; `404` |
@@ -152,7 +153,7 @@ Las bebidas se venden por tamaño (Chico/Mediano/Grande, cada uno con su propio 
 | `PUT /api/customers/:id` | admin, vendedor | parcial; mismas reglas de `422`/`400` |
 | `DELETE /api/customers/:id` | admin | `200 { message, id }`; `404` |
 | `POST /api/sales` | admin, vendedor | registra la venta (ver flujo abajo); `201` con la venta y su `ticket` |
-| `GET /api/sales?customerId=&page=&limit=` | admin, vendedor | paginado, más recientes primero |
+| `GET /api/sales?customerId=&page=&limit=` | admin, vendedor | paginado, más recientes primero; un `customerId` inválido devuelve lista vacía |
 | `GET /api/sales/:id` | admin, vendedor | venta con `ticket`; `404` |
 
 **Flujo de `POST /api/sales`** — body `{ customerId?, paymentMethod?, items: [{ productId, quantity, size? }] }`:
@@ -161,8 +162,8 @@ Las bebidas se venden por tamaño (Chico/Mediano/Grande, cada uno con su propio 
 3. Productos: alguno no existe → `400 "Producto no encontrado"`; no disponible → `400`; bebida sin tamaño válido → `422`.
 4. Stock: suma cantidades por producto (dos tamaños de la misma bebida comparten stock); si alguno no alcanza → `400 "Stock insuficiente"` con `available`/`requested` y **se rechaza toda la venta**. El descuento de stock es atómico por producto (`updateOne` con `stock >= cantidad`), y si algo falla a mitad se regresa el stock ya descontado.
 5. Cálculo en el servidor (nunca se confía en precios del cliente): `lineTotal`, `subtotal`, `discountPercent` por `purchasesCount`, `discountAmount`, `total`.
-6. Guarda la venta; si falla, regresa el stock. Si hay cliente, `purchasesCount += 1` (una venta sin cliente no incrementa a nadie).
-7. Responde `201` con `saleId`, `items` (`productName`, `size`, `quantity`, `unitPrice`, `lineTotal`), totales y `ticket` (`storeName: "Cafecito Feliz"`, `timestamp`, `customerName` o "Público general", items, `discount` como texto `"5% (-$0.73)"` o "Sin descuento", `paymentMethod` en español).
+6. Guarda la venta y, si hay cliente, `purchasesCount += 1` (una venta sin cliente no incrementa a nadie). Regla del Kit "si falla la BD al guardar → 500 y no se guarda nada": si MongoDB soporta transacciones (réplica, como Atlas) los pasos 4–6 van en una transacción (`mongoose.connection.transaction`, que reintenta conflictos de escritura); en un MongoDB standalone (CI) se compensa a mano (borra la venta y regresa el stock).
+7. Responde `201` con `id` y `saleId` (mismo valor), `items` (`productName`, `size`, `quantity`, `unitPrice`, `lineTotal`), totales y `ticket` (`storeName: "Cafecito Feliz"`, `timestamp`, `customerName` o "Público general", items, `discount` como texto `"5% (-$0.73)"` o "Sin descuento", `paymentMethod` en español).
 
 Mensajes de error y de API en español; la estructura (`error`, `details`, `id`) y los status siguen el contrato.
 
@@ -170,13 +171,13 @@ Mensajes de error y de API en español; la estructura (`error`, `details`, `id`)
 - `npm run migrate` (`scripts/migrate-mvp.js [stockInicial=50]`): productos sin `stock` → stock inicial; clientes con `email`/`phone` → `phoneOrEmail` (email) y borra el índice viejo `email_1`; copia `orders` → `sales` (sin descuento, efectivo, misma fecha; `orders` no se borra); recalcula `purchasesCount` contando ventas. Idempotente.
 - `npm run seed` (`scripts/seed.js`): inserta 8 productos y 5 clientes de ejemplo (con `purchasesCount` que cubren los 4 niveles de descuento) **solo si** las colecciones están vacías; si la base estaba totalmente vacía, registra además 3 ventas de ejemplo con `createSale()` (5%, 15% y público general). Nunca borra.
 - `npm run smoke` (`scripts/smoke.js`): espera a `/health` y prueba health, listar productos, crear producto/cliente/venta, consultar la venta, 401 sin token y 400 por stock; limpia lo que creó. Sale con código 1 si algo falla. (Se llama `smoke.js` y no `smoke-test.js` para que `node --test` no lo tome como prueba.)
-- `npm test`: `node --test` → `test/discount.test.js` (unitarias) y `test/api.test.js` (integración: levanta `createApp()` en un puerto libre contra `TEST_MONGODB_URI`; **se omite** si la variable no existe y se niega a correr si el nombre de la base no termina en `_test`, porque borra sus colecciones). Incluye la prueba de dos ventas simultáneas que no deben dejar stock negativo.
+- `npm test`: `node --test` → `test/discount.test.js` (unitarias) y `test/api.test.js` (integración: levanta `createApp()` en un puerto libre contra `TEST_MONGODB_URI`; **se omite** si la variable no existe y se niega a correr si el nombre de la base no termina en `_test`, porque borra sus colecciones). Incluye la prueba de dos ventas simultáneas que no deben dejar stock negativo y la de una falla simulada de la BD al guardar (500 sin cambios en stock, ventas ni `purchasesCount`).
 
 **Variables de entorno (`backend/.env.example`):**
 ```
 PORT=5000
 NODE_ENV=development
-MONGODB_URI=mongodb+srv://<usuario>:<password>@<cluster>.mongodb.net/cafecito?retryWrites=true&w=majority&appName=Cafecito
+DB_CONNECTION_STRING=mongodb+srv://<usuario>:<password>@<cluster>.mongodb.net/cafecito?retryWrites=true&w=majority&appName=Cafecito
 CORS_ORIGIN=http://localhost:5173
 ADMIN_TOKEN=
 VENDEDOR_TOKEN=
@@ -197,12 +198,12 @@ frontend/
 └── src/
     ├── main.jsx               # entry point: createRoot + StrictMode
     ├── App.jsx                # raíz: header + selector de rol + switch de vista (pos | clientes | productos)
-    ├── api.js                 # API_URL, apiFetch(), ApiError, getRole()/setRole()
-    ├── utils.js                # normalize(), slugify(), currency, dateTimeFormat, PAYMENT_METHODS, previewDiscount(), discountLabel()
+    ├── services/api.js        # apiFetch() (lanza ApiError), getRole()/setRole()
+    ├── utils.js                # normalize(), slugify(), currency, dateTimeFormat, PAYMENT_METHODS, discountLabel()
     ├── productIcon.js          # getProductIcon(): ícono emoji de respaldo (por palabra clave o categoría)
     ├── productImages.js        # getProductImage(): ilustración SVG por producto (import.meta.glob + slugify)
     ├── assets/products/*.svg   # 30 ilustraciones, una por producto, nombradas con el slug de su nombre
-    ├── index.css
+    ├── styles/index.css
     ├── components/
     │   ├── CustomerForm.jsx   # registra un cliente (POST /api/customers) con nombre + phoneOrEmail
     │   └── Ticket.jsx         # ticket visual (modal) a partir de sale.ticket; botón Imprimir
@@ -213,7 +214,7 @@ frontend/
 ```
 
 - `vite.config.js`: plugin de React, servidor en puerto `5173`.
-- `api.js`: centraliza `API_URL` (default `http://localhost:5000/api`) y `apiFetch(path, { method, body })`, que agrega `X-User-Role` y `Content-Type`, serializa `body` y, si la respuesta no es `ok`, lanza `ApiError` (con `status`, `details` y un mensaje armado con los `details[].message` del backend). El rol actual se guarda en `localStorage` (envuelto en try/catch; default `vendedor`).
+- `services/api.js`: centraliza `API_URL` (default `http://localhost:5000/api`) y `apiFetch(path, { method, body })`, que agrega `X-User-Role` y `Content-Type`, serializa `body` y, si la respuesta no es `ok`, lanza `ApiError` (con `status`, `details` y un mensaje armado con los `details[].message` del backend). El rol actual se guarda en `localStorage` (envuelto en try/catch; default `vendedor`).
 - `App.jsx`: header con el logo (`assets/products/americano.svg`), el nombre de la app, navegación con estado local `view` y un **selector de rol** (Vendedor / Administrador). La pestaña **Productos** solo aparece para admin; al cambiar de rol las páginas se remontan (`key={role}`). Sin librería de ruteo.
 - `pages/Pos.jsx` — punto de venta:
   - Lista productos (`GET /products?limit=100`, usa `res.data`) como tarjetas **grandes, 3 por fila** (`pos-grid`; 2 columnas en pantallas medianas y 1 en móvil), con ilustración (`<ProductVisual>`: SVG por slug o emoji de respaldo), nombre y **stock restante** ("Quedan N", descontando lo que ya está en el carrito; "Agotado" en 0).
@@ -222,7 +223,7 @@ frontend/
     - No deja agregar más unidades que el stock (los tamaños de una bebida comparten stock); productos no disponibles o agotados se deshabilitan.
   - **Panel de cuenta pegajoso** (`.order-summary` dentro de `<aside className="pos-cart order-summary">`): `position: sticky; top: 1.5rem; align-self: start`, `max-height: calc(100vh - 3rem)` + `overflow-y: auto`. Contiene el **buscador de productos** (filtra en el cliente con `normalize`), la "Cuenta" (agrupada por `producto + tamaño`, `+`/`−`, subtotal por línea), el cliente, los totales, el método de pago y el botón Cobrar.
   - **Cliente opcional**: búsqueda con debounce de 300ms (`GET /customers?q=`), registro inline con `<CustomerForm>`. Al seleccionarlo muestra su nivel ("Cliente semanal · 10%"). Sin cliente se cobra como público general, sin descuento.
-  - **Totales**: subtotal, descuento (vista previa con `previewDiscount`, misma regla que el backend) y total. El backend recalcula todo al cobrar.
+  - **Totales**: subtotal, descuento (vista previa con el `nextDiscountPercent` que ya devuelve la API para el cliente) y total. El backend recalcula todo al cobrar.
   - **Método de pago**: Efectivo / Tarjeta / Transferencia (`cash`/`card`/`transfer`).
   - **Cobrar** se habilita con carrito no vacío; hace `POST /sales` con `{ customerId | null, paymentMethod, items: [{ productId, quantity, size? }] }`. Si tiene éxito muestra el **`<Ticket>`** devuelto por el backend, vacía carrito y cliente y recarga productos (stock). Si falla muestra el mensaje del backend (ej. "Solo hay 3 disponibles, se pidieron 5") y recarga productos.
 - `pages/Customers.jsx` — clientes:
@@ -232,7 +233,7 @@ frontend/
 - `pages/Products.jsx` (solo admin): lista alfabética con ilustración, precios (por tamaño en bebidas), stock y estado; formulario lateral para crear/editar (nombre, descripción, categoría, precio o 3 tamaños con precio, stock, disponible) y eliminar con confirmación en línea. Muestra los errores `422` del backend.
 - `components/CustomerForm.jsx`: formulario controlado (nombre, correo o teléfono) → `POST /customers`; muestra el error del backend (422 o 400 duplicado) y llama a `onCreated(customer)`.
 - `components/Ticket.jsx`: modal con tienda, fecha, folio (últimos 8 caracteres del `saleId`), cliente, ítems, subtotal, descuento, total y método de pago; botón **Imprimir** (`window.print()`; en `@media print` solo se imprime el ticket).
-- Estilos en `index.css`: paleta neutra (beige/blanco) con un acento café (`--accent: #6b4226`), layout en dos columnas (`pos-main`) reutilizado en las tres vistas, colapsa a una columna en móvil (`max-width: 720px`). Sin librerías de UI ni CSS frameworks.
+- Estilos en `styles/index.css`: paleta neutra (beige/blanco) con un acento café (`--accent: #6b4226`), layout en dos columnas (`pos-main`) reutilizado en las tres vistas, colapsa a una columna en móvil (`max-width: 720px`). Sin librerías de UI ni CSS frameworks.
 - `index.html`: título `Cafecito`, `lang="es"`.
 - **Variables de entorno (`frontend/.env.example`):**
   ```
@@ -246,7 +247,7 @@ frontend/
 - **Flujo de trabajo (`CONTRIBUTING.md`):** tablero To Do / In Progress / In Review / Done con WIP máximo 2 por persona; ramas `feature/<historia>` (también `fix/`, `docs/`, `test/`) que salen de `develop` y regresan por PR (nunca push directo a `main`/`develop`); 1 historia = 1 PR; commits con prefijos `feat:`/`fix:`/`test:`/`docs:`; cómo resolver conflictos; Definition of Done de 8 puntos. Plantilla de PR en `.github/pull_request_template.md` con el checklist de la DoD.
 - **CI (`.github/workflows/ci.yml`, GitHub Actions):** en push a `main`, `develop`, `feature/**` y en PRs a `main`/`develop`, con un servicio `mongo:7`: `npm ci` → `npm test` (con `TEST_MONGODB_URI`) → `npm run build` → levantar la API y `npm run smoke`. Si un paso falla, el PR no se mergea.
 - `.env` reales nunca se commitean (están en `.gitignore`); siempre se documenta el `.env.example` correspondiente.
-- Backend "fail fast": si falta configuración crítica (ej. `MONGODB_URI`), el proceso debe morir con un mensaje claro en vez de arrancar en un estado inválido.
+- Backend "fail fast": si falta configuración crítica (ej. `DB_CONNECTION_STRING`), el proceso debe morir con un mensaje claro en vez de arrancar en un estado inválido.
 - Se trabaja en la rama `develop`.
 - Scripts raíz (`package.json`):
   - `npm run dev` — backend + frontend en paralelo (`concurrently`).
@@ -284,3 +285,6 @@ frontend/
 - **2026-10-15** — `GET /api/products` ahora ordena por popularidad (unidades vendidas vía agregación sobre `Order.items.qty`) en vez de por fecha de creación; empate se resuelve alfabéticamente. El frontend no necesitó cambios porque ya renderiza los productos en el orden que recibe de la API.
 - **2026-10-16** — Alineación con el **MVP del Kit de Arranque** del curso de SCRUM (contrato de API, modelo de datos, edge cases, flujos y matriz de permisos). Backend reorganizado en capas (routes → controllers → services → models, más `utils/` y `middleware/auth.js` + `errorHandler.js`). `Order` se reemplaza por `Sale` y `/api/orders` por `/api/sales`: cliente opcional (venta a público general), `paymentMethod`, descuento progresivo por `purchasesCount` (0/5/10/15%), validación y descuento atómico de **stock** (venta todo-o-nada), snapshots de nombre/precio y **ticket** en la respuesta. `Product` gana `stock` (y la categoría por default pasa a `"otro"`); `Customer` pasa de `email` + `phone` a **`phoneOrEmail`** único + `purchasesCount`. Respuestas paginadas `{ data, total, page, limit }` con `q`, errores `{ error, details }` (400/401/403/404/422), `id` en vez de `_id`. Roles con header `X-User-Role` (admin / vendedor). Scripts `npm run migrate` (migra la base existente, idempotente) y `npm run seed`, pruebas `node --test` y `ejemplos-api.http`. Frontend: selector de rol, POS con stock, cliente opcional, vista previa de descuento, método de pago y ticket imprimible; historial con tickets en Clientes; nueva página **Productos** (CRUD, solo admin). Se eliminaron `models/Order.js` y `routes/order.routes.js`.
 - **2026-10-16** — Cierre de requisitos del Kit y de los sprints: autenticación con `Authorization: Bearer <token>` (además de `X-User-Role`), alias `DB_CONNECTION_STRING`, pruebas de integración de la API (`test/api.test.js`, base `_test` desechable), smoke test (`scripts/smoke.js`), pipeline de CI en GitHub Actions, colección de Postman, ventas de ejemplo en el seed, `CONTRIBUTING.md` (tablero, WIP, ramas `feature/`, PRs, conflictos, Definition of Done) y plantilla de Pull Request.
+- **2026-10-19** — Limpieza de código: se borraron de verdad `models/Order.js` y `routes/order.routes.js` (seguían en el repo sin montarse; la migración lee la colección `orders` directamente). Se quitaron comentarios redundantes (rutas repetidas en los controllers, etc.) y exportaciones sin uso (`requireRole`, `validateProductData`, `toSaleResponse`, `API_URL`, `ApiError`). El frontend ya no duplica la regla de descuento (`previewDiscount` eliminado): usa `nextDiscountPercent` del backend. Correcciones: `GET /api/sales?customerId=<inválido>` devolvía las ventas de público general (ahora lista vacía, con prueba de integración) y los errores 4xx de Express/body-parser (ej. 413 body demasiado grande) ya no se reportan como 500.
+- **2026-10-21** — Segunda limpieza de comentarios: solo quedan los que explican un "por qué" que el código no dice (stock compartido entre tamaños, venta todo-o-nada con update condicional, carrera en el índice único, snapshots de venta, orden de las reglas de íconos, catches vacíos). Se quitaron JSDoc que repetían el nombre o la firma de la función, comentarios de permisos en rutas (ya los dicen `adminOnly`/`staff`) y la tabla de descuentos duplicada en `discount.service.js` (la regla está en el código y en este documento).
+- **2026-10-22** — Verificación contra el PDF de requisitos del curso (Kit + Sprints 0–5). Correcciones: todos los errores siguen `{ error, details: [{ field, message }] }` (antes 401/403/404/500 y varios 400 de ventas no traían `details` o `field`); la venta expone `id` además de `saleId`; el nombre de producto solo exige máximo 100 caracteres (antes mínimo 2); `POST /api/sales` usa una transacción cuando MongoDB la soporta, para que una falla de BD no deje nada guardado; `.env.example` usa `DB_CONNECTION_STRING` (sigue aceptando `MONGODB_URI`); el frontend separa `services/api.js` y `styles/index.css`; se restauraron los comentarios de decisiones importantes (regla de descuento, cliente duplicado, cliente inexistente en venta). 37 pruebas (5 unitarias + 32 de integración), probadas contra MongoDB standalone y con réplica.

@@ -1,9 +1,5 @@
 import { currency, dateTimeFormat } from "../utils";
 
-/**
- * Ticket visual de una venta. Se construye con `sale.ticket` tal como lo
- * devuelve el backend (POST /api/sales o GET /api/sales/:id), sin recalcular nada.
- */
 function Ticket({ sale, onClose, closeLabel = "Nueva venta" }) {
   const { ticket } = sale;
 

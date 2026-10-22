@@ -30,10 +30,10 @@ cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env
 ```
 
-En `backend/.env` pega tu connection string de Atlas en `MONGODB_URI` (Atlas > Database > Connect > Drivers; también se acepta el nombre del Kit, `DB_CONNECTION_STRING`). Incluye el nombre de la base de datos en la ruta, ej:
+En `backend/.env` pega tu connection string de Atlas en `DB_CONNECTION_STRING` (Atlas > Database > Connect > Drivers; también se acepta `MONGODB_URI`). Incluye el nombre de la base de datos en la ruta, ej:
 
 ```
-MONGODB_URI=mongodb+srv://<usuario>:<password>@<cluster>.mongodb.net/cafecito?retryWrites=true&w=majority&appName=Cafecito
+DB_CONNECTION_STRING=mongodb+srv://<usuario>:<password>@<cluster>.mongodb.net/cafecito?retryWrites=true&w=majority&appName=Cafecito
 ```
 
 > Este repo ya trae un `backend/.env` local con el connection string configurado para desarrollo. No se sube a git (ver `.gitignore`).
@@ -72,7 +72,7 @@ npm test                 # unitarias (regla de descuento) + integración de la A
 npm run smoke --workspace=backend   # smoke test contra una API ya levantada (API_URL)
 ```
 
-- Las **pruebas de integración** (`backend/test/api.test.js`, 29 casos del contrato y de edge cases) solo corren si defines `TEST_MONGODB_URI` con una base **desechable** cuyo nombre termine en `_test` (ej. `mongodb://127.0.0.1:27017/cafecito_test` con Docker: `docker run -d -p 27017:27017 mongo:7`). Nunca apuntes a tu base de Atlas: las pruebas borran sus colecciones.
+- Las **pruebas de integración** (`backend/test/api.test.js`, 32 casos del contrato y de edge cases) solo corren si defines `TEST_MONGODB_URI` con una base **desechable** cuyo nombre termine en `_test` (ej. `mongodb://127.0.0.1:27017/cafecito_test` con Docker: `docker run -d -p 27017:27017 mongo:7`). Nunca apuntes a tu base de Atlas: las pruebas borran sus colecciones.
 - **Pruebas manuales:** `backend/ejemplos-api.http` (extensión REST Client) o `backend/postman-collection.json` (Postman → Import → Run collection; 35 requests con asserts).
 - **CI:** `.github/workflows/ci.yml` corre en GitHub Actions en cada push a `feature/**`, `develop` y `main`, y en cada PR: `npm ci` → `npm test` (con MongoDB de servicio) → `npm run build` → smoke test.
 
@@ -115,6 +115,14 @@ Base URL `http://localhost:5000/api`. Sigue el **Contrato de API del Kit de Arra
 - Si algún producto no tiene stock suficiente se rechaza **toda** la venta (`400`); si se acepta, el stock baja.
 - `paymentMethod`: `cash` (default), `card` o `transfer`.
 - La respuesta incluye el `ticket` listo para mostrar.
+- Si falla la base de datos al guardar → `500` y no se guarda nada (transacción en Atlas; compensación manual en un MongoDB sin réplica).
+
+**Decisiones del equipo sobre los edge cases del Kit:**
+
+- **Cliente duplicado** (mismo correo o teléfono): se **rechaza con `400`** e incluye `existingCustomerId` en `details` para que el frontend pueda seleccionar al cliente existente.
+- **Cliente inexistente en una venta:** `400` (no se vende como público general).
+- **Producto inexistente en una venta:** `400`; producto inexistente en `GET/PUT/DELETE`: `404`.
+- Los mensajes de error están en español; la estructura y los códigos siguen el contrato.
 
 Todos los casos (éxito y error) están en [`backend/ejemplos-api.http`](backend/ejemplos-api.http) (REST Client) y en [`backend/postman-collection.json`](backend/postman-collection.json) (Postman).
 

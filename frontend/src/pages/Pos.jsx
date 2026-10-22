@@ -1,16 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiFetch } from "../api";
+import { apiFetch } from "../services/api";
 import CustomerForm from "../components/CustomerForm";
 import Ticket from "../components/Ticket";
 import { getProductIcon } from "../productIcon";
 import { getProductImage } from "../productImages";
-import {
-  normalize,
-  currency,
-  PAYMENT_METHODS,
-  previewDiscount,
-  discountLabel,
-} from "../utils";
+import { normalize, currency, PAYMENT_METHODS, discountLabel } from "../utils";
 
 function cartKey(productId, size) {
   return `${productId}::${size ?? ""}`;
@@ -52,7 +46,7 @@ function Pos() {
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [checkoutError, setCheckoutError] = useState(null);
   const [checkingOut, setCheckingOut] = useState(false);
-  const [lastSale, setLastSale] = useState(null); // venta recién cobrada → muestra ticket
+  const [lastSale, setLastSale] = useState(null);
 
   const loadProducts = useCallback(() => {
     return apiFetch("/products?limit=100")
@@ -80,7 +74,7 @@ function Pos() {
     return () => clearTimeout(timeout);
   }, [customerQuery, selectedCustomer]);
 
-  // Unidades en el carrito por producto (los tamaños de una bebida comparten stock)
+  // Los tamaños de una bebida comparten stock
   const cartQtyByProduct = useMemo(() => {
     const map = new Map();
     cart.forEach((item) => map.set(item.product.id, (map.get(item.product.id) ?? 0) + item.qty));
@@ -130,7 +124,8 @@ function Pos() {
     () => cart.reduce((sum, item) => sum + item.unitPrice * item.qty, 0),
     [cart]
   );
-  const discountPercent = selectedCustomer ? previewDiscount(selectedCustomer.purchasesCount) : 0;
+  // Vista previa: el backend vuelve a calcular el descuento real al cobrar
+  const discountPercent = selectedCustomer?.nextDiscountPercent ?? 0;
   const discountAmount = Math.round(subtotal * discountPercent) / 100;
   const total = subtotal - discountAmount;
 
@@ -162,10 +157,10 @@ function Pos() {
       setCart([]);
       setSelectedCustomer(null);
       setPaymentMethod("cash");
-      loadProducts(); // el stock cambió
+      loadProducts();
     } catch (err) {
       setCheckoutError(err.message);
-      // Si falló por stock, refresca para mostrar las existencias reales
+      // Un 400 suele ser stock insuficiente: refresca las existencias reales
       if (err.status === 400) loadProducts();
     } finally {
       setCheckingOut(false);
@@ -306,7 +301,7 @@ function Pos() {
                 <strong>{selectedCustomer.name}</strong>
                 <span className="pos-cart-item-price">{selectedCustomer.phoneOrEmail}</span>
                 <span className="pos-discount-badge">
-                  {discountLabel(previewDiscount(selectedCustomer.purchasesCount))}
+                  {discountLabel(selectedCustomer.nextDiscountPercent)}
                 </span>
               </div>
               <button type="button" onClick={() => setSelectedCustomer(null)}>

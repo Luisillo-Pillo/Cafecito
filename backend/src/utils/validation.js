@@ -5,21 +5,16 @@ const isValidId = (value) => typeof value === "string" && mongoose.isValidObject
 
 const isPositiveInteger = (value) => Number.isInteger(value) && value >= 1;
 
-// Redondeo monetario a 2 decimales (evita 13.774999... en totales y descuentos)
+// EPSILON evita errores de flotante como 13.774999...
 const round2 = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
 
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// Correo "usuario@dominio.tld" o teléfono que empieza con + seguido de 8 a 15 dígitos
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^\+\d{8,15}$/;
 
-/**
- * Normaliza phoneOrEmail: correos en minúsculas; teléfonos sin espacios ni guiones.
- * Devuelve null si no es ni correo ni teléfono válido.
- */
 function normalizePhoneOrEmail(value) {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -29,10 +24,6 @@ function normalizePhoneOrEmail(value) {
   return null;
 }
 
-/**
- * Lee page/limit del query string. Si son inválidos lanza 400 con el detalle
- * de cada parámetro (ver edge-cases: "Parámetros de paginación inválidos").
- */
 function parsePagination(query, { defaultLimit = 20, maxLimit = 100 } = {}) {
   const details = [];
 
@@ -67,7 +58,6 @@ function parsePagination(query, { defaultLimit = 20, maxLimit = 100 } = {}) {
   return { page, limit, skip: (page - 1) * limit };
 }
 
-// Respuesta paginada estándar del contrato: { data, total, page, limit }
 function paginated(data, total, { page, limit }, emptyMessage) {
   const body = { data, total, page, limit };
   if (total === 0 && emptyMessage) body.message = emptyMessage;

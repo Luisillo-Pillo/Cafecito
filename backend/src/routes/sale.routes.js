@@ -5,7 +5,6 @@ const { staff } = require("../middleware/auth");
 
 const router = Router();
 
-// Ventas: vendedor o admin
 router.post("/", staff, asyncHandler(controller.create));
 router.get("/", staff, asyncHandler(controller.list));
 router.get("/:id", staff, asyncHandler(controller.getById));

@@ -1,13 +1,7 @@
 const { Schema, model } = require("mongoose");
 const { toJSONOptions } = require("../utils/toJSON");
 
-/**
- * Cliente. Según el Kit, se identifica con un solo campo `phoneOrEmail`
- * (correo o teléfono con +) y lleva `purchasesCount`, que define su descuento.
- *
- * purchasesCount SOLO lo incrementa el backend al registrar una venta
- * (POST /api/sales); la API ignora ese campo en POST/PUT de clientes.
- */
+// purchasesCount solo lo incrementa POST /api/sales; la API lo ignora en POST/PUT de clientes
 const customerSchema = new Schema(
   {
     name: { type: String, required: true, trim: true, minlength: 2, maxlength: 100 },
