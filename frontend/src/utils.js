@@ -2,7 +2,7 @@ export function normalize(text) {
   return text
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "");
+    .replace(/[\u0300-\u036f]/g, "");
 }
 
 export function slugify(text) {
@@ -26,19 +26,6 @@ export const PAYMENT_METHODS = [
   { value: "card", label: "Tarjeta" },
   { value: "transfer", label: "Transferencia" },
 ];
-
-/**
- * VISTA PREVIA del descuento por compras previas (misma regla que
- * backend/src/services/discount.service.js). El backend es quien calcula el
- * descuento real al cobrar; esto solo sirve para mostrarlo antes de cobrar.
- */
-export function previewDiscount(purchasesCount) {
-  const count = Number(purchasesCount) || 0;
-  if (count <= 0) return 0;
-  if (count <= 3) return 5;
-  if (count <= 7) return 10;
-  return 15;
-}
 
 export function discountLabel(percent) {
   if (percent === 0) return "Cliente nuevo · sin descuento";

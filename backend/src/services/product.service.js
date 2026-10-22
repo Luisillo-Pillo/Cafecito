@@ -6,17 +6,13 @@ const { isValidId, escapeRegex } = require("../utils/validation");
 
 const isPositiveNumber = (value) => typeof value === "number" && Number.isFinite(value) && value > 0;
 
-/**
- * Valida los datos de un producto ya combinados (para PUT: existente + cambios).
- * Devuelve la lista de errores en formato `details` del contrato (vacía si todo OK).
- */
 function validateProductData(data) {
   const details = [];
 
   if (typeof data.name !== "string" || data.name.trim().length === 0) {
     details.push({ field: "name", message: "name es requerido" });
-  } else if (data.name.trim().length < 2 || data.name.trim().length > 100) {
-    details.push({ field: "name", message: "name debe tener entre 2 y 100 caracteres" });
+  } else if (data.name.trim().length > 100) {
+    details.push({ field: "name", message: "name debe tener como máximo 100 caracteres" });
   }
 
   if (data.category !== undefined && !PRODUCT_CATEGORIES.includes(data.category)) {
@@ -67,7 +63,7 @@ function validateProductData(data) {
   return details;
 }
 
-// Solo estos campos se aceptan desde la API (evita que se cuelen _id, createdAt, etc.)
+// Lista blanca: evita que se cuelen _id, createdAt, etc.
 function pickProductFields(body = {}) {
   const fields = ["name", "description", "category", "price", "sizes", "stock", "available"];
   const picked = {};
@@ -78,7 +74,6 @@ function pickProductFields(body = {}) {
   return picked;
 }
 
-// Ajusta price/sizes según la categoría para que el documento quede consistente
 function normalizeByCategory(data) {
   if (data.category === "bebida") {
     data.price = undefined;
@@ -89,10 +84,6 @@ function normalizeByCategory(data) {
   return data;
 }
 
-/**
- * Lista productos ordenados por popularidad (unidades vendidas en todas las
- * ventas; empate alfabético), con búsqueda `q` por nombre y paginación.
- */
 async function listProducts({ q, page, limit, skip }) {
   const filter = {};
   const search = typeof q === "string" ? q.trim() : "";
@@ -169,5 +160,4 @@ module.exports = {
   createProduct,
   updateProduct,
   deleteProduct,
-  validateProductData,
 };

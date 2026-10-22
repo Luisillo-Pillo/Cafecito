@@ -1,12 +1,4 @@
-/**
- * Datos de prueba para desarrollo (npm run seed --workspace=backend).
- *
- * NO borra nada: solo inserta productos si la colección de productos está vacía,
- * y solo inserta clientes si la de clientes está vacía. Así no pisa el catálogo
- * real que ya está cargado en Atlas. Si la base estaba completamente vacía,
- * además registra 3 ventas de ejemplo (con y sin cliente) usando el mismo
- * servicio que POST /api/sales, para que stock y purchasesCount queden coherentes.
- */
+// No borra nada: solo llena colecciones vacías, para no pisar el catálogo real de Atlas.
 require("dotenv/config");
 const { connectDB, disconnectDB } = require("../src/config/db");
 const Product = require("../src/models/Product");
@@ -47,7 +39,6 @@ async function seedSales() {
   const latte = await byName(Product, "Latte");
 
   const sales = [
-    // Cliente con 2 compras previas → 5%
     {
       customerId: await byName(Customer, "Carlos Méndez"),
       paymentMethod: "cash",
@@ -56,13 +47,11 @@ async function seedSales() {
         { productId: concha, quantity: 1 },
       ],
     },
-    // Cliente VIP (9 compras) → 15%
     {
       customerId: await byName(Customer, "Jorge Ramírez"),
       paymentMethod: "card",
       items: [{ productId: latte, quantity: 1, size: "Grande" }],
     },
-    // Venta a público general → sin descuento
     { customerId: null, paymentMethod: "transfer", items: [{ productId: concha, quantity: 3 }] },
   ];
 

@@ -1,4 +1,3 @@
-// Pruebas unitarias de la regla de descuento (npm test --workspace=backend)
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { calculateDiscount } = require("../src/services/discount.service");

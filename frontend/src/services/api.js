@@ -1,8 +1,7 @@
-export const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:5000/api";
+const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:5000/api";
 
 const ROLE_KEY = "cafecito.role";
 
-// Rol del usuario (vendedor | admin). Se envía en cada petición como X-User-Role.
 let currentRole = readStoredRole();
 
 function readStoredRole() {
@@ -27,11 +26,7 @@ export function setRole(role) {
   }
 }
 
-/**
- * Error de la API con el status y los `details` del backend, para que cada
- * pantalla pueda mostrar el mensaje concreto (ej. "Solo hay 3 disponibles").
- */
-export class ApiError extends Error {
+class ApiError extends Error {
   constructor(status, body) {
     const details = Array.isArray(body?.details) ? body.details : [];
     const detailText = details.map((d) => d.message).filter(Boolean).join(". ");
@@ -42,10 +37,6 @@ export class ApiError extends Error {
   }
 }
 
-/**
- * fetch() hacia la API: agrega el rol y Content-Type, y convierte respuestas
- * no exitosas en ApiError. `body` puede ser un objeto (se serializa a JSON).
- */
 export async function apiFetch(path, { body, headers, ...options } = {}) {
   const res = await fetch(`${API_URL}${path}`, {
     ...options,

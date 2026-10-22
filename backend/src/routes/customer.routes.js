@@ -5,7 +5,6 @@ const { staff, adminOnly } = require("../middleware/auth");
 
 const router = Router();
 
-// Clientes: vendedor o admin. Eliminar un cliente queda solo para admin.
 router.get("/", staff, asyncHandler(controller.list));
 router.get("/:id", staff, asyncHandler(controller.getById));
 router.get("/:id/sales", staff, asyncHandler(controller.listSales));

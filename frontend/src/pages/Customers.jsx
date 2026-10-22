@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { apiFetch } from "../api";
+import { apiFetch } from "../services/api";
 import CustomerForm from "../components/CustomerForm";
 import Ticket from "../components/Ticket";
-import { currency, dateTimeFormat, previewDiscount, discountLabel } from "../utils";
+import { currency, dateTimeFormat, discountLabel } from "../utils";
 
 function Customers({ role }) {
   const [customers, setCustomers] = useState([]);
@@ -17,7 +17,6 @@ function Customers({ role }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [actionError, setActionError] = useState(null);
 
-  // Búsqueda en el servidor (GET /customers?q=), con debounce de 300ms
   const loadCustomers = useCallback((q = "") => {
     setStatus("loading");
     const params = new URLSearchParams({ limit: "100" });
@@ -113,7 +112,7 @@ function Customers({ role }) {
                 <span className="customers-list-meta">
                   {customer.purchasesCount} {customer.purchasesCount === 1 ? "compra" : "compras"}
                   <span className="pos-discount-badge">
-                    {previewDiscount(customer.purchasesCount)}%
+                    {customer.nextDiscountPercent}%
                   </span>
                 </span>
               </button>
@@ -134,7 +133,7 @@ function Customers({ role }) {
               <span>{selected.phoneOrEmail}</span>
               <span>
                 {selected.purchasesCount} compras ·{" "}
-                {discountLabel(previewDiscount(selected.purchasesCount))} en su próxima compra
+                {discountLabel(selected.nextDiscountPercent)} en su próxima compra
               </span>
 
               {role === "admin" && (

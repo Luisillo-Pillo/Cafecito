@@ -1,20 +1,10 @@
-/**
- * Pruebas de integración de la API (Backend ↔ BD), basadas en el Contrato de API
- * y en los Edge Cases del Kit de Arranque.
- *
- * Necesitan una base de datos DESECHABLE en TEST_MONGODB_URI cuyo nombre termine
- * en "_test" (las pruebas borran productos, clientes y ventas de esa base).
- * Si la variable no está definida, estas pruebas se omiten.
- *
- *   TEST_MONGODB_URI=mongodb://127.0.0.1:27017/cafecito_test npm test
- */
+// Requiere TEST_MONGODB_URI con una base desechable terminada en _test (se vacía al iniciar).
 require("dotenv/config");
 const { describe, it, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const mongoose = require("mongoose");
 
 const TEST_URI = process.env.TEST_MONGODB_URI;
-// Nombre de la base = lo que va después de la última "/" y antes de "?"
 const dbName = TEST_URI ? (TEST_URI.split("?")[0].split("/")[3] ?? "") : "";
 const skip = !TEST_URI
   ? "TEST_MONGODB_URI no está definida"
@@ -89,9 +79,11 @@ describe("API de Cafecito (integración)", { skip }, () => {
   });
 
   describe("Autenticación y permisos", () => {
-    it("sin credenciales → 401", async () => {
+    it("sin credenciales → 401 con { error, details: [{ field, message }] }", async () => {
       const res = await api("GET", "/customers");
       assert.equal(res.status, 401);
+      assert.equal(res.body.details[0].field, "Authorization");
+      assert.ok(res.body.details[0].message);
     });
 
     it("token Bearer inválido → 401", async () => {
@@ -111,6 +103,7 @@ describe("API de Cafecito (integración)", { skip }, () => {
         body: { name: "Café", price: 5, stock: 100 },
       });
       assert.equal(res.status, 403);
+      assert.ok(res.body.details[0].message);
     });
 
     it("ver productos es público → 200", async () => {
@@ -162,6 +155,20 @@ describe("API de Cafecito (integración)", { skip }, () => {
       assert.deepEqual(res.body.details.map((d) => d.field).sort(), ["name", "price", "stock"]);
     });
 
+    it("nombre de 1 carácter es válido; más de 100 → 422", async () => {
+      const ok = await api("POST", "/products", {
+        role: "admin",
+        body: { name: "T", price: 1, stock: 0 },
+      });
+      assert.equal(ok.status, 201);
+      const long = await api("POST", "/products", {
+        role: "admin",
+        body: { name: "x".repeat(101), price: 1, stock: 0 },
+      });
+      assert.equal(long.status, 422);
+      await api("DELETE", `/products/${ok.body.id}`, { role: "admin" });
+    });
+
     it("actualizar → 200; producto inexistente → 404", async () => {
       const ok = await api("PUT", `/products/${ids.galleta}`, {
         role: "admin",
@@ -174,6 +181,7 @@ describe("API de Cafecito (integración)", { skip }, () => {
         body: { price: 3 },
       });
       assert.equal(missing.status, 404);
+      assert.equal(missing.body.details[0].field, "id");
     });
   });
 
@@ -236,6 +244,7 @@ describe("API de Cafecito (integración)", { skip }, () => {
       });
       assert.equal(res.status, 400);
       assert.equal(res.body.error, "Producto no encontrado");
+      assert.equal(res.body.details[0].field, "items[0].productId");
     });
 
     it("cliente inexistente → 400", async () => {
@@ -262,6 +271,7 @@ describe("API de Cafecito (integración)", { skip }, () => {
       assert.equal(res.status, 400);
       assert.equal(res.body.details[0].available, 10);
       assert.equal(res.body.details[0].requested, 11);
+      assert.equal(res.body.details[0].field, "items[1].quantity");
       const americano = await api("GET", `/products/${ids.americano}`);
       assert.equal(americano.body.stock, 50);
     });
@@ -296,6 +306,7 @@ describe("API de Cafecito (integración)", { skip }, () => {
       assert.equal(res.body.total, 100.7);
       assert.equal(res.body.ticket.storeName, "Cafecito Feliz");
       assert.equal(res.body.ticket.discount, "5% (-$5.30)");
+      assert.equal(res.body.id, res.body.saleId);
       ids.sale = res.body.saleId;
 
       assert.equal((await api("GET", `/products/${ids.americano}`)).body.stock, 48);
@@ -326,6 +337,44 @@ describe("API de Cafecito (integración)", { skip }, () => {
       assert.equal(res.body.data[0].saleId, ids.sale);
     });
 
+    it("filtrar ventas por customerId inválido → lista vacía (no las de público general)", async () => {
+      const res = await api("GET", "/sales?customerId=abc", { role: "vendedor" });
+      assert.equal(res.status, 200);
+      assert.equal(res.body.total, 0);
+    });
+
+    it("si falla la base de datos al guardar → 500 y no se guarda nada", async () => {
+      const Sale = require("../src/models/Sale");
+      const Customer = require("../src/models/Customer");
+      const body = {
+        customerId: ids.ana,
+        items: [{ productId: ids.americano, quantity: 1, size: "Chico" }],
+      };
+      const snapshot = async () => ({
+        stock: (await api("GET", `/products/${ids.americano}`)).body.stock,
+        purchases: (await api("GET", `/customers/${ids.ana}`, { role: "vendedor" })).body
+          .purchasesCount,
+        sales: await Sale.countDocuments(),
+      });
+
+      const before = await snapshot();
+      for (const [Model, method] of [
+        [Sale, "create"],
+        [Customer, "updateOne"],
+      ]) {
+        Model[method] = async () => {
+          throw new Error("Fallo simulado de la base de datos");
+        };
+        try {
+          const res = await api("POST", "/sales", { role: "vendedor", body });
+          assert.equal(res.status, 500);
+        } finally {
+          delete Model[method];
+        }
+        assert.deepEqual(await snapshot(), before);
+      }
+    });
+
     it("dos ventas simultáneas no dejan el stock negativo", async () => {
       // Quedan 5 conchas: dos ventas de 3 a la vez → solo una puede pasar
       const body = { items: [{ productId: ids.concha, quantity: 3 }] };
@@ -349,8 +398,10 @@ describe("API de Cafecito (integración)", { skip }, () => {
       assert.equal(res.status, 400);
     });
 
-    it("ruta inexistente → 404", async () => {
-      assert.equal((await api("GET", "/nada")).status, 404);
+    it("ruta inexistente → 404 con details", async () => {
+      const res = await api("GET", "/nada");
+      assert.equal(res.status, 404);
+      assert.equal(res.body.details[0].field, "path");
     });
 
     it("eliminar producto (admin) → 200; otra vez → 404", async () => {

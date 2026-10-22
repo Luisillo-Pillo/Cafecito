@@ -2,10 +2,6 @@ const Customer = require("../models/Customer");
 const { HttpError, validationError, notFound } = require("../utils/httpError");
 const { isValidId, escapeRegex, normalizePhoneOrEmail } = require("../utils/validation");
 
-/**
- * Valida name y phoneOrEmail. Con `partial` (PUT) solo valida lo que venga.
- * Devuelve { details, data } con phoneOrEmail ya normalizado.
- */
 function validateCustomerData(body = {}, { partial = false } = {}) {
   const details = [];
   const data = {};
@@ -40,7 +36,7 @@ function validateCustomerData(body = {}, { partial = false } = {}) {
   return { details, data };
 }
 
-// Decisión del equipo (edge cases): un cliente duplicado se RECHAZA con 400
+// Decisión del equipo (edge case del Kit): un cliente duplicado se rechaza con 400 e indica cuál existe
 async function assertNotDuplicated(phoneOrEmail, exceptId) {
   const existing = await Customer.findOne({ phoneOrEmail });
   if (existing && String(existing._id) !== String(exceptId)) {
@@ -85,7 +81,6 @@ async function createCustomer(body) {
   if (details.length > 0) throw validationError(details);
 
   await assertNotDuplicated(data.phoneOrEmail);
-  // purchasesCount siempre arranca en 0, aunque el body traiga otro valor
   return Customer.create({ ...data, purchasesCount: 0 });
 }
 

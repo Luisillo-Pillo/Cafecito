@@ -1,15 +1,9 @@
 const mongoose = require("mongoose");
 
-/**
- * Conecta a MongoDB Atlas usando la connection string definida en MONGODB_URI
- * (o DB_CONNECTION_STRING, el nombre que usa el Kit de Arranque).
- * Lanza el proceso si la variable no existe, para fallar rápido en vez de
- * arrancar un servidor sin base de datos.
- */
-async function connectDB(uri = process.env.MONGODB_URI || process.env.DB_CONNECTION_STRING) {
+async function connectDB(uri = process.env.DB_CONNECTION_STRING || process.env.MONGODB_URI) {
   if (!uri) {
     throw new Error(
-      "Falta la variable de entorno MONGODB_URI (o DB_CONNECTION_STRING). Revisa tu archivo .env (ver .env.example)."
+      "Falta la variable de entorno DB_CONNECTION_STRING (o MONGODB_URI). Revisa tu archivo .env (ver .env.example)."
     );
   }
 

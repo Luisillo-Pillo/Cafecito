@@ -1,19 +1,5 @@
-/**
- * Migración única al modelo del MVP del Kit de Arranque.
- * Es idempotente: se puede correr varias veces sin duplicar nada.
- *
- *   npm run migrate --workspace=backend            (stock inicial 50)
- *   npm run migrate --workspace=backend -- 100     (stock inicial 100)
- *
- * Qué hace:
- * 1. Productos sin `stock` → les asigna el stock inicial indicado.
- * 2. Clientes con `email`/`phone` (modelo anterior) → `phoneOrEmail` = email,
- *    y elimina los campos viejos. Quita el índice único viejo `email_1`.
- * 3. Compras de la colección antigua `orders` → ventas en `sales`
- *    (sin descuento, pago en efectivo, conservando fecha original).
- *    La colección `orders` NO se borra, por seguridad.
- * 4. Recalcula `purchasesCount` de cada cliente contando sus ventas.
- */
+// Migración idempotente al modelo del MVP. La colección `orders` no se borra.
+//   npm run migrate --workspace=backend -- [stockInicial=50]
 require("dotenv/config");
 const mongoose = require("mongoose");
 const { connectDB, disconnectDB } = require("../src/config/db");

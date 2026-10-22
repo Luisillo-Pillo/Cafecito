@@ -10,18 +10,11 @@ const sizeSchema = new Schema(
   { _id: false }
 );
 
-/**
- * Producto del catálogo. Campos mínimos del Kit: name, price, stock.
- * Extensión de Cafecito: las bebidas se venden por tamaño (sizes, con precio
- * propio cada uno) en vez de un precio único. El stock es por producto
- * (los 3 tamaños de una bebida comparten el mismo stock).
- *
- * Las validaciones de entrada con mensajes del contrato (422) viven en
- * services/product.service.js; las de aquí son la red de seguridad de la BD.
- */
+// Los 3 tamaños de una bebida comparten el mismo stock.
+// Las validaciones con mensajes del contrato viven en product.service.js; estas son la red de seguridad.
 const productSchema = new Schema(
   {
-    name: { type: String, required: true, trim: true, minlength: 2, maxlength: 100 },
+    name: { type: String, required: true, trim: true, maxlength: 100 },
     description: { type: String, default: "" },
     category: { type: String, enum: PRODUCT_CATEGORIES, default: "otro" },
     price: {
