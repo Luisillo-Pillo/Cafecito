@@ -11,6 +11,7 @@
     "seed": "node scripts/seed.js",
     "migrate": "node scripts/migrate-mvp.js",
     "smoke": "node scripts/smoke.js",
+    "hash-password": "node scripts/hash-password.js",
     "test": "node --test"
   },
   "dependencies": {

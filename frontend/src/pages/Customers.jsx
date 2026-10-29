@@ -2,19 +2,24 @@ import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../services/api";
 import CustomerForm from "../components/CustomerForm";
 import Ticket from "../components/Ticket";
+import Notice from "../components/Notice";
+import StateMessage, { LoadError } from "../components/StateMessage";
 import { currency, dateTimeFormat, discountLabel } from "../utils";
 
 function Customers({ role }) {
   const [customers, setCustomers] = useState([]);
   const [status, setStatus] = useState("loading"); // loading | ready | error
+  const [loadError, setLoadError] = useState(null);
   const [query, setQuery] = useState("");
   const [showForm, setShowForm] = useState(false);
 
   const [selected, setSelected] = useState(null);
   const [sales, setSales] = useState([]);
   const [salesStatus, setSalesStatus] = useState("idle"); // idle | loading | ready | error
+  const [salesError, setSalesError] = useState(null);
   const [openSale, setOpenSale] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [actionError, setActionError] = useState(null);
 
   const loadCustomers = useCallback((q = "") => {
@@ -26,7 +31,10 @@ function Customers({ role }) {
         setCustomers(res.data);
         setStatus("ready");
       })
-      .catch(() => setStatus("error"));
+      .catch((err) => {
+        setLoadError(err);
+        setStatus("error");
+      });
   }, []);
 
   useEffect(() => {
@@ -37,6 +45,7 @@ function Customers({ role }) {
   const selectCustomer = (customer) => {
     setSelected(customer);
     setConfirmDelete(false);
+    setEditing(false);
     setActionError(null);
     setSalesStatus("loading");
     apiFetch(`/customers/${customer.id}/sales?limit=50`)
@@ -44,7 +53,10 @@ function Customers({ role }) {
         setSales(res.data);
         setSalesStatus("ready");
       })
-      .catch(() => setSalesStatus("error"));
+      .catch((err) => {
+        setSalesError(err);
+        setSalesStatus("error");
+      });
   };
 
   const deleteCustomer = async () => {
@@ -76,7 +88,7 @@ function Customers({ role }) {
 
         {showForm && (
           <CustomerForm
-            onCreated={(customer) => {
+            onSaved={(customer) => {
               setShowForm(false);
               loadCustomers(query);
               selectCustomer(customer);
@@ -86,13 +98,20 @@ function Customers({ role }) {
         )}
 
         {status === "loading" && customers.length === 0 && (
-          <p className="pos-empty">Cargando clientes...</p>
+          <StateMessage illustration="loading" title="Cargando clientes…" />
         )}
-        {status === "error" && <p className="pos-empty">No se pudo conectar con la API.</p>}
-        {status === "ready" && customers.length === 0 && (
-          <p className="pos-empty">
-            {query ? `No se encontraron clientes para "${query}".` : "No hay clientes registrados todavía."}
-          </p>
+        {status === "error" && (
+          <LoadError error={loadError} subject="los clientes" onRetry={() => loadCustomers(query)} />
+        )}
+        {status === "ready" && customers.length === 0 && query.trim() && (
+          <StateMessage illustration="search" title={`No encontramos clientes con «${query.trim()}»`}>
+            Busca por nombre, correo o teléfono, o regístralo como cliente nuevo.
+          </StateMessage>
+        )}
+        {status === "ready" && customers.length === 0 && !query.trim() && (
+          <StateMessage illustration="customers" title="Aún no hay clientes registrados">
+            Registra al primero con «+ Nuevo cliente» para que empiece a acumular descuentos.
+          </StateMessage>
         )}
 
         <ul className="customers-list">
@@ -124,19 +143,38 @@ function Customers({ role }) {
       <aside className="pos-cart">
         <h2>Historial de compras</h2>
 
-        {!selected && <p className="pos-empty">Selecciona un cliente para ver sus compras.</p>}
+        {!selected && (
+          <StateMessage illustration="customers" title="Elige un cliente" compact>
+            Aquí verás sus datos, su descuento y el historial de sus compras.
+          </StateMessage>
+        )}
 
         {selected && (
           <>
             <div className="customer-detail">
-              <strong>{selected.name}</strong>
-              <span>{selected.phoneOrEmail}</span>
-              <span>
-                {selected.purchasesCount} compras ·{" "}
-                {discountLabel(selected.nextDiscountPercent)} en su próxima compra
-              </span>
+              {editing ? (
+                <CustomerForm
+                  key={selected.id}
+                  customer={selected}
+                  onSaved={(updated) => {
+                    setEditing(false);
+                    setSelected(updated);
+                    loadCustomers(query);
+                  }}
+                  onCancel={() => setEditing(false)}
+                />
+              ) : (
+                <>
+                  <strong>{selected.name}</strong>
+                  <span>{selected.phoneOrEmail}</span>
+                  <span>
+                    {selected.purchasesCount} compras ·{" "}
+                    {discountLabel(selected.nextDiscountPercent)} en su próxima compra
+                  </span>
+                </>
+              )}
 
-              {role === "admin" && (
+              {!editing && (
                 <div className="customer-admin-actions">
                   {confirmDelete ? (
                     <>
@@ -149,21 +187,43 @@ function Customers({ role }) {
                       </button>
                     </>
                   ) : (
-                    <button type="button" onClick={() => setConfirmDelete(true)}>
-                      Eliminar cliente
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActionError(null);
+                          setEditing(true);
+                        }}
+                      >
+                        Editar cliente
+                      </button>
+                      {role === "admin" && (
+                        <button type="button" onClick={() => setConfirmDelete(true)}>
+                          Eliminar cliente
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               )}
-              {actionError && <p className="form-error">{actionError}</p>}
+              {actionError && <Notice>{actionError}</Notice>}
             </div>
 
-            {salesStatus === "loading" && <p className="pos-empty">Cargando...</p>}
+            {salesStatus === "loading" && (
+              <StateMessage illustration="loading" title="Buscando sus compras…" compact />
+            )}
             {salesStatus === "error" && (
-              <p className="pos-empty">No se pudo cargar el historial.</p>
+              <LoadError
+                error={salesError}
+                subject="sus compras"
+                onRetry={() => selectCustomer(selected)}
+                compact
+              />
             )}
             {salesStatus === "ready" && sales.length === 0 && (
-              <p className="pos-empty">Sin compras registradas.</p>
+              <StateMessage illustration="receipt" title="Todavía no tiene compras" compact>
+                Cuando compre, sus tickets aparecerán aquí.
+              </StateMessage>
             )}
 
             <ul className="pos-cart-list">

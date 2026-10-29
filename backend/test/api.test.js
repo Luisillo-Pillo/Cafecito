@@ -13,16 +13,22 @@ const skip = !TEST_URI
     : false;
 
 process.env.NODE_ENV = "test";
+process.env.ADMIN_EMAIL = "admin@cafecito.test";
+process.env.AUTH_SECRET = "secreto-de-pruebas";
+delete process.env.ADMIN_TOKEN;
+const ADMIN_PASSWORD = "clave-de-prueba";
 
 describe("API de Cafecito (integración)", { skip }, () => {
   let server;
   let baseUrl;
   const ids = {};
+  let adminToken;
 
-  async function api(method, path, { body, role, token } = {}) {
-    const headers = {};
+  async function api(method, path, { body, role, token, headers: extra } = {}) {
+    const headers = { ...extra };
     if (body !== undefined) headers["Content-Type"] = "application/json";
-    if (role) headers["X-User-Role"] = role;
+    if (role === "admin") headers.Authorization = `Bearer ${adminToken}`;
+    else if (role) headers["X-User-Role"] = role;
     if (token) headers.Authorization = `Bearer ${token}`;
     const res = await fetch(`${baseUrl}${path}`, {
       method,
@@ -39,9 +45,19 @@ describe("API de Cafecito (integración)", { skip }, () => {
     const Product = require("../src/models/Product");
     const Customer = require("../src/models/Customer");
     const Sale = require("../src/models/Sale");
+    const Admin = require("../src/models/Admin");
+
+    const { hashPassword } = require("../src/services/auth.service");
+    process.env.ADMIN_PASSWORD_HASH = await hashPassword(ADMIN_PASSWORD);
 
     await connectDB(TEST_URI);
-    await Promise.all([Product.deleteMany({}), Customer.deleteMany({}), Sale.deleteMany({})]);
+    await Promise.all([
+      Product.deleteMany({}),
+      Customer.deleteMany({}),
+      Sale.deleteMany({}),
+      Admin.deleteMany({}),
+    ]);
+    await Admin.syncIndexes();
     await Customer.syncIndexes();
 
     const [americano, concha] = await Product.create([
@@ -71,6 +87,11 @@ describe("API de Cafecito (integración)", { skip }, () => {
     server = createApp().listen(0);
     await new Promise((resolve) => server.once("listening", resolve));
     baseUrl = `http://127.0.0.1:${server.address().port}/api`;
+
+    const login = await api("POST", "/auth/login", {
+      body: { email: "Admin@Cafecito.test", password: ADMIN_PASSWORD },
+    });
+    adminToken = login.body.token;
   });
 
   after(async () => {
@@ -104,6 +125,62 @@ describe("API de Cafecito (integración)", { skip }, () => {
       });
       assert.equal(res.status, 403);
       assert.ok(res.body.details[0].message);
+    });
+
+    it("login de admin correcto → 200 con token, rol y vencimiento", async () => {
+      const res = await api("POST", "/auth/login", {
+        body: { email: "admin@cafecito.test", password: ADMIN_PASSWORD },
+      });
+      assert.equal(res.status, 200);
+      assert.equal(res.body.role, "admin");
+      assert.ok(res.body.token);
+      assert.ok(Date.parse(res.body.expiresAt) > Date.now());
+    });
+
+    it("contraseña o correo incorrectos → 401 con el mismo mensaje", async () => {
+      for (const body of [
+        { email: "admin@cafecito.test", password: "otra-clave" },
+        { email: "otro@cafecito.test", password: ADMIN_PASSWORD },
+      ]) {
+        const res = await api("POST", "/auth/login", { body });
+        assert.equal(res.status, 401);
+        assert.equal(res.body.details[0].message, "Correo o contraseña incorrectos");
+      }
+    });
+
+    it("login sin correo ni contraseña → 422", async () => {
+      const res = await api("POST", "/auth/login", { body: {} });
+      assert.equal(res.status, 422);
+      assert.deepEqual(res.body.details.map((d) => d.field).sort(), ["email", "password"]);
+    });
+
+    it("X-User-Role: admin ya no basta para actuar como admin → 401", async () => {
+      const res = await api("POST", "/products", {
+        headers: { "X-User-Role": "admin" },
+        body: { name: "Café", price: 5, stock: 100 },
+      });
+      assert.equal(res.status, 401);
+      assert.equal(res.body.error, "Inicio de sesión requerido");
+    });
+
+    it("token de sesión alterado o vencido → 401", async () => {
+      const crypto = require("node:crypto");
+      const [payload, signature] = adminToken.split(".");
+      const forged = Buffer.from(
+        JSON.stringify({ ...JSON.parse(Buffer.from(payload, "base64url")), email: "intruso" })
+      ).toString("base64url");
+      const expired = Buffer.from(
+        JSON.stringify({ role: "admin", email: "admin@cafecito.test", exp: Date.now() - 1000 })
+      ).toString("base64url");
+      const expiredSig = crypto
+        .createHmac("sha256", process.env.AUTH_SECRET)
+        .update(expired)
+        .digest("base64url");
+
+      for (const token of [`${forged}.${signature}`, `${expired}.${expiredSig}`, "dev-admin-token"]) {
+        const res = await api("POST", "/products", { token, body: { name: "X", price: 1, stock: 1 } });
+        assert.equal(res.status, 401);
+      }
     });
 
     it("ver productos es público → 200", async () => {
@@ -272,6 +349,7 @@ describe("API de Cafecito (integración)", { skip }, () => {
       assert.equal(res.body.details[0].available, 10);
       assert.equal(res.body.details[0].requested, 11);
       assert.equal(res.body.details[0].field, "items[1].quantity");
+      assert.equal(res.body.details[0].message, "Solo quedan 10 de Concha y la cuenta pide 11.");
       const americano = await api("GET", `/products/${ids.americano}`);
       assert.equal(americano.body.stock, 50);
     });
@@ -388,6 +466,66 @@ describe("API de Cafecito (integración)", { skip }, () => {
     });
   });
 
+  describe("Administradores", () => {
+    const nuevo = { name: "Mariana López", email: "Mariana@Cafecito.test", password: "segura-123" };
+
+    it("un admin registra a otro admin → 201 sin exponer la contraseña", async () => {
+      const res = await api("POST", "/admins", { role: "admin", body: nuevo });
+      assert.equal(res.status, 201);
+      assert.equal(res.body.email, "mariana@cafecito.test");
+      assert.equal(res.body.createdBy, "admin@cafecito.test");
+      assert.ok(res.body.id);
+      assert.equal(res.body.passwordHash, undefined);
+      assert.equal(res.body.password, undefined);
+    });
+
+    it("el admin nuevo puede iniciar sesión y actuar como admin", async () => {
+      const login = await api("POST", "/auth/login", {
+        body: { email: "mariana@cafecito.test", password: nuevo.password },
+      });
+      assert.equal(login.status, 200);
+      assert.equal(login.body.email, "mariana@cafecito.test");
+      const list = await api("GET", "/admins", { token: login.body.token });
+      assert.equal(list.status, 200);
+      assert.equal(list.body.owner, "admin@cafecito.test");
+      assert.deepEqual(
+        list.body.data.map((a) => a.email),
+        ["mariana@cafecito.test"]
+      );
+    });
+
+    it("contraseña incorrecta del admin nuevo → 401", async () => {
+      const res = await api("POST", "/auth/login", {
+        body: { email: "mariana@cafecito.test", password: "otra-clave" },
+      });
+      assert.equal(res.status, 401);
+    });
+
+    it("correo repetido (o el del admin principal) → 400", async () => {
+      for (const email of ["MARIANA@cafecito.test", "admin@cafecito.test"]) {
+        const res = await api("POST", "/admins", { role: "admin", body: { ...nuevo, email } });
+        assert.equal(res.status, 400);
+        assert.equal(res.body.error, "El administrador ya existe");
+      }
+    });
+
+    it("nombre corto, correo inválido y contraseña corta → 422", async () => {
+      const res = await api("POST", "/admins", {
+        role: "admin",
+        body: { name: "X", email: "no-es-correo", password: "123" },
+      });
+      assert.equal(res.status, 422);
+      assert.deepEqual(res.body.details.map((d) => d.field).sort(), ["email", "name", "password"]);
+    });
+
+    it("vendedor → 403; sin sesión → 401", async () => {
+      const vendedor = await api("POST", "/admins", { role: "vendedor", body: nuevo });
+      assert.equal(vendedor.status, 403);
+      const anonimo = await api("GET", "/admins");
+      assert.equal(anonimo.status, 401);
+    });
+  });
+
   describe("Errores generales", () => {
     it("JSON mal formado → 400", async () => {
       const res = await fetch(`${baseUrl}/sales`, {
@@ -405,9 +543,9 @@ describe("API de Cafecito (integración)", { skip }, () => {
     });
 
     it("eliminar producto (admin) → 200; otra vez → 404", async () => {
-      const ok = await api("DELETE", `/products/${ids.galleta}`, { token: "dev-admin-token" });
+      const ok = await api("DELETE", `/products/${ids.galleta}`, { role: "admin" });
       assert.equal(ok.status, 200);
-      const again = await api("DELETE", `/products/${ids.galleta}`, { token: "dev-admin-token" });
+      const again = await api("DELETE", `/products/${ids.galleta}`, { role: "admin" });
       assert.equal(again.status, 404);
     });
   });

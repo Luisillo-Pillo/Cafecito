@@ -9,9 +9,9 @@ function validateCustomerData(body = {}, { partial = false } = {}) {
   if (!partial || body.name !== undefined) {
     const name = typeof body.name === "string" ? body.name.trim() : "";
     if (!name) {
-      details.push({ field: "name", message: "name es requerido" });
+      details.push({ field: "name", message: "Escribe el nombre del cliente." });
     } else if (name.length < 2 || name.length > 100) {
-      details.push({ field: "name", message: "name debe tener entre 2 y 100 caracteres" });
+      details.push({ field: "name", message: "El nombre debe tener entre 2 y 100 caracteres." });
     } else {
       data.name = name;
     }
@@ -19,13 +19,14 @@ function validateCustomerData(body = {}, { partial = false } = {}) {
 
   if (!partial || body.phoneOrEmail !== undefined) {
     if (typeof body.phoneOrEmail !== "string" || body.phoneOrEmail.trim() === "") {
-      details.push({ field: "phoneOrEmail", message: "phoneOrEmail es requerido" });
+      details.push({ field: "phoneOrEmail", message: "Escribe un correo o un teléfono." });
     } else {
       const normalized = normalizePhoneOrEmail(body.phoneOrEmail);
       if (!normalized) {
         details.push({
           field: "phoneOrEmail",
-          message: "Debe ser un correo válido (usuario@ejemplo.com) o un teléfono con + (+524491234567)",
+          message:
+            "Escribe un correo válido (ej. ana@correo.com) o un teléfono con lada (ej. +52 449 123 4567).",
         });
       } else {
         data.phoneOrEmail = normalized;
@@ -44,7 +45,7 @@ async function assertNotDuplicated(phoneOrEmail, exceptId) {
       details: [
         {
           field: "phoneOrEmail",
-          message: "Ya existe un cliente con ese correo o teléfono",
+          message: "Ya hay un cliente registrado con ese correo o teléfono.",
           existingCustomerId: existing.id,
         },
       ],

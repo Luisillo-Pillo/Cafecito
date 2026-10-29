@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Cafecito Feliz POS API",
-    "description": "Requests del Contrato de API y Edge Cases del Kit de Arranque. Ejecútalos en orden (o con Run collection): los ids creados se guardan en variables de la colección. Cambia baseUrl si tu API no corre en localhost:5000.",
+    "description": "Requests del Contrato de API y Edge Cases del Kit de Arranque. Ejecútalos en orden (o con Run collection): los ids creados se guardan en variables de la colección. Cambia baseUrl si tu API no corre en localhost:5000. Antes de las peticiones de admin, escribe adminEmail y adminPassword en las variables de la colección (solo como Current value, para que no se exporten) y ejecuta \"Login de administrador\": guarda el token en adminToken.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -10,8 +10,16 @@
       "value": "http://localhost:5000/api"
     },
     {
+      "key": "adminEmail",
+      "value": ""
+    },
+    {
+      "key": "adminPassword",
+      "value": ""
+    },
+    {
       "key": "adminToken",
-      "value": "dev-admin-token"
+      "value": ""
     },
     {
       "key": "vendedorToken",
@@ -61,6 +69,86 @@
               ],
               "path": [
                 "health"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Autenticación",
+      "item": [
+        {
+          "name": "Login de administrador → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"adminToken\", pm.response.json().token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Login con contraseña incorrecta → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 401\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"incorrecta\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
               ]
             }
           }

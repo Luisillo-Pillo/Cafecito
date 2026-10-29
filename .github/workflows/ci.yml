@@ -28,6 +28,7 @@ jobs:
     env:
       NODE_ENV: test
       TEST_MONGODB_URI: mongodb://127.0.0.1:27017/cafecito_test
+      ADMIN_TOKEN: ci-admin-token
 
     steps:
       - name: 1. Checkout del código

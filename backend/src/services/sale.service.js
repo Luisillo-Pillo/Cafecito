@@ -12,16 +12,16 @@ function validateSaleBody(body = {}) {
   const { items, paymentMethod } = body;
 
   if (!Array.isArray(items) || items.length === 0) {
-    details.push({ field: "items", message: "items no puede estar vacío (mínimo 1 producto)" });
+    details.push({ field: "items", message: "Agrega al menos un producto a la cuenta." });
   } else {
     items.forEach((item, i) => {
       if (typeof item?.productId !== "string" || item.productId.trim() === "") {
-        details.push({ field: `items[${i}].productId`, message: "productId es requerido" });
+        details.push({ field: `items[${i}].productId`, message: "Falta indicar uno de los productos." });
       }
       if (!isPositiveInteger(item?.quantity)) {
         details.push({
           field: `items[${i}].quantity`,
-          message: "quantity debe ser un entero mayor o igual a 1",
+          message: "La cantidad de cada producto debe ser de 1 o más.",
         });
       }
     });
@@ -30,13 +30,13 @@ function validateSaleBody(body = {}) {
   if (paymentMethod !== undefined && !PAYMENT_METHODS.includes(paymentMethod)) {
     details.push({
       field: "paymentMethod",
-      message: `paymentMethod debe ser uno de: ${PAYMENT_METHODS.join(", ")}`,
+      message: "Elige un método de pago: efectivo, tarjeta o transferencia.",
     });
   }
 
   const { customerId } = body;
   if (customerId !== undefined && customerId !== null && typeof customerId !== "string") {
-    details.push({ field: "customerId", message: "customerId debe ser texto o null" });
+    details.push({ field: "customerId", message: "El cliente seleccionado no es válido." });
   }
 
   if (details.length > 0) throw validationError(details);
@@ -51,7 +51,7 @@ async function resolveCustomer(customerId, session) {
     : null;
   if (!customer) {
     throw new HttpError(400, "Cliente no encontrado", {
-      details: [{ field: "customerId", message: "El cliente no existe" }],
+      details: [{ field: "customerId", message: "Ese cliente ya no está registrado. Quítalo de la cuenta o elige otro." }],
     });
   }
   return customer;
@@ -65,7 +65,7 @@ async function resolveItems(items, session) {
   const missing = items.flatMap((item, i) =>
     productMap.has(item.productId)
       ? []
-      : [{ field: `items[${i}].productId`, productId: item.productId, message: "El producto no existe" }]
+      : [{ field: `items[${i}].productId`, productId: item.productId, message: "Un producto de la cuenta ya no está en el menú. Quítalo e intenta de nuevo." }]
   );
   if (missing.length > 0) {
     throw new HttpError(400, "Producto no encontrado", { details: missing });
@@ -80,7 +80,7 @@ async function resolveItems(items, session) {
         field: `items[${i}].productId`,
         productId: product.id,
         productName: product.name,
-        message: `${product.name} no está disponible por ahora`,
+        message: `${product.name} no está disponible por ahora.`,
       });
     }
 
@@ -91,9 +91,7 @@ async function resolveItems(items, session) {
       if (!chosen) {
         sizeErrors.push({
           field: `items[${i}].size`,
-          message: `Selecciona un tamaño válido para ${product.name}: ${product.sizes
-            .map((s) => s.name)
-            .join(", ")}`,
+          message: `Elige un tamaño para ${product.name}.`,
         });
       } else {
         unitPrice = chosen.price;
@@ -131,7 +129,10 @@ function insufficientStockError(entries) {
       productName: product.name,
       available,
       requested: quantity,
-      message: `Solo hay ${available} disponibles, se pidieron ${quantity}`,
+      message:
+        available > 0
+          ? `Solo quedan ${available} de ${product.name} y la cuenta pide ${quantity}.`
+          : `Ya no queda ${product.name}.`,
     })),
   });
 }

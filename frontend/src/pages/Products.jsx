@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../services/api";
+import Notice from "../components/Notice";
+import StateMessage, { LoadError } from "../components/StateMessage";
 import { getProductIcon } from "../productIcon";
 import { getProductImage } from "../productImages";
 import { currency, normalize } from "../utils";
@@ -174,7 +176,7 @@ function ProductForm({ product, onSaved, onCancel }) {
         Disponible para venta
       </label>
 
-      {error && <p className="form-error">{error}</p>}
+      {error && <Notice>{error}</Notice>}
 
       <div className="customer-form-actions">
         <button type="submit" disabled={saving}>
@@ -196,6 +198,7 @@ function Products() {
   const [deletingId, setDeletingId] = useState(null);
   const [message, setMessage] = useState(null);
   const [error, setError] = useState(null);
+  const [loadError, setLoadError] = useState(null);
 
   const loadProducts = useCallback(() => {
     return apiFetch("/products?limit=100")
@@ -203,7 +206,10 @@ function Products() {
         setProducts([...res.data].sort((a, b) => a.name.localeCompare(b.name, "es")));
         setStatus("ready");
       })
-      .catch(() => setStatus("error"));
+      .catch((err) => {
+        setLoadError(err);
+        setStatus("error");
+      });
   }, []);
 
   useEffect(() => {
@@ -211,7 +217,11 @@ function Products() {
   }, [loadProducts]);
 
   const handleSaved = (saved) => {
-    setMessage(`"${saved.name}" guardado.`);
+    setMessage(
+      editing === "new"
+        ? `${saved.name} se agregó al menú.`
+        : `Guardamos los cambios de ${saved.name}.`
+    );
     setEditing(null);
     loadProducts();
   };
@@ -220,7 +230,7 @@ function Products() {
     setError(null);
     try {
       await apiFetch(`/products/${product.id}`, { method: "DELETE" });
-      setMessage(`"${product.name}" eliminado.`);
+      setMessage(`${product.name} se eliminó del menú.`);
       setDeletingId(null);
       if (editing?.id === product.id) setEditing(null);
       loadProducts();
@@ -253,12 +263,28 @@ function Products() {
           </button>
         </div>
 
-        {message && <p className="pos-success">{message}</p>}
-        {error && <p className="form-error">{error}</p>}
-        {status === "loading" && <p className="pos-empty">Cargando productos...</p>}
-        {status === "error" && <p className="pos-empty">No se pudo conectar con la API.</p>}
-        {status === "ready" && filtered.length === 0 && (
-          <p className="pos-empty">No hay productos que mostrar.</p>
+        {message && <Notice type="success">{message}</Notice>}
+        {error && <Notice>{error}</Notice>}
+        {status === "loading" && <StateMessage illustration="loading" title="Cargando el menú…" />}
+        {status === "error" && (
+          <LoadError
+            error={loadError}
+            subject="el menú"
+            onRetry={() => {
+              setStatus("loading");
+              loadProducts();
+            }}
+          />
+        )}
+        {status === "ready" && products.length === 0 && (
+          <StateMessage illustration="menu" title="El menú está vacío">
+            Agrega el primer producto con «+ Nuevo producto».
+          </StateMessage>
+        )}
+        {status === "ready" && products.length > 0 && filtered.length === 0 && (
+          <StateMessage illustration="search" title={`No encontramos «${query.trim()}»`}>
+            Revisa cómo está escrito o prueba con otra palabra.
+          </StateMessage>
         )}
 
         <ul className="admin-products">
@@ -330,12 +356,9 @@ function Products() {
             onCancel={() => setEditing(null)}
           />
         ) : (
-          <>
-            <h2>Productos</h2>
-            <p className="pos-empty">
-              Elige "Editar" en un producto o crea uno nuevo. El stock baja solo con cada venta.
-            </p>
-          </>
+          <StateMessage illustration="menu" title="Elige un producto para editarlo" compact>
+            O crea uno nuevo con «+ Nuevo producto». El stock baja solo con cada venta.
+          </StateMessage>
         )}
       </aside>
     </main>

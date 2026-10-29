@@ -13,7 +13,7 @@ function validationError(details) {
 function notFound(error, id) {
   return new HttpError(404, error, {
     id,
-    details: [{ field: "id", message: `No existe ningún registro con id "${id}"` }],
+    details: [{ field: "id", message: "No encontramos ese registro; es posible que se haya eliminado." }],
   });
 }
 

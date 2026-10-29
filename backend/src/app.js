@@ -4,6 +4,8 @@ const helmet = require("helmet");
 const morgan = require("morgan");
 
 const healthRoutes = require("./routes/health.routes");
+const authRoutes = require("./routes/auth.routes");
+const adminRoutes = require("./routes/admin.routes");
 const productRoutes = require("./routes/product.routes");
 const customerRoutes = require("./routes/customer.routes");
 const saleRoutes = require("./routes/sale.routes");
@@ -24,6 +26,8 @@ function createApp() {
   }
 
   app.use("/api", healthRoutes);
+  app.use("/api/auth", authRoutes);
+  app.use("/api/admins", adminRoutes);
   app.use("/api/products", productRoutes);
   app.use("/api/customers", customerRoutes);
   app.use("/api/sales", saleRoutes);

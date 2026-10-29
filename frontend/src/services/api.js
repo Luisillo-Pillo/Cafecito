@@ -1,56 +1,107 @@
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:5000/api";
 
-const ROLE_KEY = "cafecito.role";
+const SESSION_KEY = "cafecito.session";
 
-let currentRole = readStoredRole();
+let session = readStoredSession();
+const roleListeners = new Set();
 
-function readStoredRole() {
+function isActive(candidate) {
+  return Boolean(candidate?.token) && Date.parse(candidate.expiresAt) > Date.now();
+}
+
+function readStoredSession() {
   try {
-    const stored = localStorage.getItem(ROLE_KEY);
-    return stored === "admin" || stored === "vendedor" ? stored : "vendedor";
+    const stored = JSON.parse(localStorage.getItem(SESSION_KEY));
+    return isActive(stored) ? stored : null;
   } catch {
-    return "vendedor";
+    return null;
   }
+}
+
+function saveSession(next) {
+  session = next;
+  try {
+    if (next) localStorage.setItem(SESSION_KEY, JSON.stringify(next));
+    else localStorage.removeItem(SESSION_KEY);
+  } catch {
+    // Sin almacenamiento disponible: la sesión solo dura mientras la pestaña esté abierta
+  }
+  roleListeners.forEach((listener) => listener(getRole()));
 }
 
 export function getRole() {
-  return currentRole;
+  return session ? "admin" : "vendedor";
 }
 
-export function setRole(role) {
-  currentRole = role;
-  try {
-    localStorage.setItem(ROLE_KEY, role);
-  } catch {
-    // Sin almacenamiento disponible: el rol solo dura mientras la pestaña esté abierta
-  }
+export function getSessionEmail() {
+  return session?.email ?? null;
 }
+
+export function onRoleChange(listener) {
+  roleListeners.add(listener);
+  return () => roleListeners.delete(listener);
+}
+
+export async function loginAdmin(email, password) {
+  const result = await apiFetch("/auth/login", { method: "POST", body: { email, password } });
+  saveSession({ token: result.token, email: result.email, expiresAt: result.expiresAt });
+}
+
+export function logout() {
+  saveSession(null);
+}
+
+const MESSAGES = {
+  offline: "No pudimos conectarnos con el sistema. Revisa tu conexión a internet e intenta de nuevo.",
+  session: "Tu sesión de administrador terminó. Vuelve a elegir Administrador para ingresar de nuevo.",
+  forbidden: "No tienes permiso para hacer esto. Pide ayuda a un administrador.",
+  notFound: "No encontramos ese registro; es posible que alguien lo haya eliminado. Actualiza la página.",
+  server: "Algo salió mal de nuestro lado y no se guardó ningún cambio. Intenta de nuevo en un momento.",
+};
 
 class ApiError extends Error {
-  constructor(status, body) {
-    const details = Array.isArray(body?.details) ? body.details : [];
-    const detailText = details.map((d) => d.message).filter(Boolean).join(". ");
-    super(detailText || body?.message || body?.error || `HTTP ${status}`);
+  constructor(status, message, details = []) {
+    super(message);
     this.status = status;
-    this.title = body?.error;
     this.details = details;
   }
 }
 
+// Los mensajes de validación del backend ya están escritos para el usuario; el resto se traduce aquí
+function toApiError(status, body, hadSession) {
+  const details = Array.isArray(body?.details) ? body.details : [];
+  if (status === 401 && hadSession) return new ApiError(status, MESSAGES.session, details);
+  if (status === 403) return new ApiError(status, MESSAGES.forbidden, details);
+  if (status === 404) return new ApiError(status, MESSAGES.notFound, details);
+  if (status >= 500) return new ApiError(status, MESSAGES.server, details);
+  const text = details.map((d) => d.message).filter(Boolean).join(" ");
+  return new ApiError(status, text || MESSAGES.server, details);
+}
+
 export async function apiFetch(path, { body, headers, ...options } = {}) {
-  const res = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers: {
-      "X-User-Role": currentRole,
-      ...(body !== undefined && { "Content-Type": "application/json" }),
-      ...headers,
-    },
-    ...(body !== undefined && { body: JSON.stringify(body) }),
-  });
+  if (session && !isActive(session)) logout();
+
+  const hadSession = Boolean(session);
+  let res;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      ...options,
+      headers: {
+        ...(session ? { Authorization: `Bearer ${session.token}` } : { "X-User-Role": "vendedor" }),
+        ...(body !== undefined && { "Content-Type": "application/json" }),
+        ...headers,
+      },
+      ...(body !== undefined && { body: JSON.stringify(body) }),
+    });
+  } catch {
+    throw new ApiError(0, MESSAGES.offline);
+  }
 
   if (!res.ok) {
+    // Token vencido o revocado (ej. cambió AUTH_SECRET): se vuelve a vendedor
+    if (res.status === 401 && hadSession) logout();
     const errorBody = await res.json().catch(() => null);
-    throw new ApiError(res.status, errorBody);
+    throw toApiError(res.status, errorBody, hadSession);
   }
 
   if (res.status === 204) return null;

@@ -341,9 +341,88 @@ button {
   cursor: not-allowed;
 }
 
-.pos-empty {
+.state-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 2rem 1rem;
+  text-align: center;
   color: var(--muted);
-  font-size: 0.9rem;
+}
+
+.state-message-art {
+  width: 160px;
+  height: auto;
+}
+
+.state-message.is-compact {
+  padding: 1rem 0.5rem;
+}
+
+.state-message.is-compact .state-message-art {
+  width: 110px;
+}
+
+.state-message-title {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.state-message.is-compact .state-message-title {
+  font-size: 0.92rem;
+}
+
+.state-message-text {
+  max-width: 36ch;
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.state-message-action {
+  margin-top: 0.5rem;
+  padding: 0.45rem 0.9rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  margin: 0.5rem 0 0;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.notice svg {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.notice-error {
+  border: 1px solid #f1cfcb;
+  background: #fbeceb;
+  color: #a1251c;
+}
+
+.notice-success {
+  border: 1px solid #cfe5d6;
+  background: #ebf5ee;
+  color: #2f6b3f;
 }
 
 .pos-hint {
@@ -351,12 +430,6 @@ button {
   font-size: 0.8rem;
   margin: 0.4rem 0 0;
   text-align: center;
-}
-
-.pos-success {
-  color: #2f6b3f;
-  font-size: 0.85rem;
-  margin: 0.5rem 0 0;
 }
 
 input {
@@ -471,12 +544,6 @@ input:focus {
   font-size: 0.85rem;
 }
 
-.form-error {
-  color: #b3261e;
-  font-size: 0.8rem;
-  margin: 0;
-}
-
 .customers-toolbar {
   display: flex;
   gap: 0.5rem;
@@ -568,6 +635,72 @@ select {
   gap: 0.4rem;
   font-size: 0.8rem;
   color: var(--muted);
+}
+
+.pos-session {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.pos-session button {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.8rem;
+}
+
+.login-card {
+  background: var(--surface);
+  width: min(340px, 100%);
+  border-radius: 10px;
+  padding: 1.5rem 1.25rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.password-field {
+  position: relative;
+}
+
+.password-field input {
+  padding-right: 2.4rem;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 0.35rem;
+  transform: translateY(-50%);
+  display: flex;
+  padding: 0.3rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.password-toggle:hover,
+.password-toggle[aria-pressed="true"] {
+  color: var(--accent);
+}
+
+.password-toggle svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.login-card h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
 }
 
 .pos-payment {
@@ -716,6 +849,10 @@ button.danger {
   color: #b3261e;
 }
 
+.admin-tag.is-owner {
+  color: var(--accent);
+}
+
 .admin-product-actions {
   display: flex;
   gap: 0.4rem;
@@ -778,7 +915,8 @@ button.danger {
 
 /* ---------- Ticket ---------- */
 
-.ticket-backdrop {
+.ticket-backdrop,
+.login-backdrop {
   position: fixed;
   inset: 0;
   background: rgba(20, 15, 10, 0.45);
