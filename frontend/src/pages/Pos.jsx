@@ -77,12 +77,16 @@ function Pos() {
       setCustomerMatches([]);
       return;
     }
+    let stale = false;
     const timeout = setTimeout(() => {
       apiFetch(`/customers?q=${encodeURIComponent(customerQuery.trim())}&limit=8`)
-        .then((res) => setCustomerMatches(res.data))
-        .catch(() => setCustomerMatches([]));
+        .then((res) => !stale && setCustomerMatches(res.data))
+        .catch(() => !stale && setCustomerMatches([]));
     }, 300);
-    return () => clearTimeout(timeout);
+    return () => {
+      stale = true;
+      clearTimeout(timeout);
+    };
   }, [customerQuery, selectedCustomer]);
 
   // Los tamaños de una bebida comparten stock

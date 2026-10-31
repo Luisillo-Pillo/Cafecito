@@ -148,6 +148,16 @@ describe("API de Cafecito (integración)", { skip }, () => {
       }
     });
 
+    it("5 intentos fallidos seguidos bloquean el login de ese correo → 429", async () => {
+      const body = { email: "fuerza-bruta@cafecito.test", password: "adivinando" };
+      for (let i = 0; i < 5; i++) {
+        assert.equal((await api("POST", "/auth/login", { body })).status, 401);
+      }
+      const blocked = await api("POST", "/auth/login", { body });
+      assert.equal(blocked.status, 429);
+      assert.match(blocked.body.details[0].message, /Demasiados intentos/);
+    });
+
     it("login sin correo ni contraseña → 422", async () => {
       const res = await api("POST", "/auth/login", { body: {} });
       assert.equal(res.status, 422);
@@ -246,6 +256,15 @@ describe("API de Cafecito (integración)", { skip }, () => {
       await api("DELETE", `/products/${ok.body.id}`, { role: "admin" });
     });
 
+    it("descripción de más de 500 caracteres → 422", async () => {
+      const res = await api("POST", "/products", {
+        role: "admin",
+        body: { name: "Pan", price: 10, stock: 1, description: "x".repeat(501) },
+      });
+      assert.equal(res.status, 422);
+      assert.equal(res.body.details[0].field, "description");
+    });
+
     it("actualizar → 200; producto inexistente → 404", async () => {
       const ok = await api("PUT", `/products/${ids.galleta}`, {
         role: "admin",
@@ -281,6 +300,16 @@ describe("API de Cafecito (integración)", { skip }, () => {
       });
       assert.equal(res.status, 422);
       assert.equal(res.body.details.length, 2);
+    });
+
+    it("un correo enorme se rechaza rápido (sin bloquear el servidor) → 422", async () => {
+      const start = Date.now();
+      const res = await api("POST", "/customers", {
+        role: "vendedor",
+        body: { name: "Ataque", phoneOrEmail: `a@${".".repeat(90000)}@` },
+      });
+      assert.equal(res.status, 422);
+      assert.ok(Date.now() - start < 1000);
     });
 
     it("correo duplicado (sin importar mayúsculas) → 400 con existingCustomerId", async () => {

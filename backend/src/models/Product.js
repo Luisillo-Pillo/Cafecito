@@ -15,7 +15,7 @@ const sizeSchema = new Schema(
 const productSchema = new Schema(
   {
     name: { type: String, required: true, trim: true, maxlength: 100 },
-    description: { type: String, default: "" },
+    description: { type: String, default: "", maxlength: 500 },
     category: { type: String, enum: PRODUCT_CATEGORIES, default: "otro" },
     price: {
       type: Number,

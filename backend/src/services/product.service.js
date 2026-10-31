@@ -4,6 +4,8 @@ const { PRODUCT_CATEGORIES, DRINK_SIZES_COUNT } = require("../config/constants")
 const { validationError, notFound } = require("../utils/httpError");
 const { isValidId, escapeRegex } = require("../utils/validation");
 
+const MAX_DESCRIPTION_LENGTH = 500;
+
 const isPositiveNumber = (value) => typeof value === "number" && Number.isFinite(value) && value > 0;
 
 function validateProductData(data) {
@@ -58,6 +60,11 @@ function validateProductData(data) {
 
   if (data.description !== undefined && typeof data.description !== "string") {
     details.push({ field: "description", message: "La descripción debe ser texto." });
+  } else if (data.description?.length > MAX_DESCRIPTION_LENGTH) {
+    details.push({
+      field: "description",
+      message: `La descripción puede tener máximo ${MAX_DESCRIPTION_LENGTH} caracteres.`,
+    });
   }
 
   return details;

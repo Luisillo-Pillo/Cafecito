@@ -12,15 +12,19 @@ function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Las etiquetas del dominio no incluyen puntos para que la regex sea lineal (sin ReDoS), y el
+// largo se limita antes de evaluarla (254 es el máximo de un correo según el RFC)
+const EMAIL_REGEX = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
+const MAX_EMAIL_LENGTH = 254;
 const PHONE_REGEX = /^\+\d{8,15}$/;
 
-const isValidEmail = (value) => typeof value === "string" && EMAIL_REGEX.test(value);
+const isValidEmail = (value) =>
+  typeof value === "string" && value.length <= MAX_EMAIL_LENGTH && EMAIL_REGEX.test(value);
 
 function normalizePhoneOrEmail(value) {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
-  if (EMAIL_REGEX.test(trimmed)) return trimmed.toLowerCase();
+  if (isValidEmail(trimmed)) return trimmed.toLowerCase();
   const phone = trimmed.replace(/[\s\-()]/g, "");
   if (PHONE_REGEX.test(phone)) return phone;
   return null;

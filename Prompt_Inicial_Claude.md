@@ -46,7 +46,7 @@ backend/
 ├── test/
 │   ├── discount.test.js      # pruebas unitarias de la regla de descuento
 │   ├── auth.test.js          # pruebas unitarias de hash de contraseña y token de sesión
-│   └── api.test.js           # 43 pruebas de integración (contrato + edge cases + login + administradores), requiere TEST_MONGODB_URI
+│   └── api.test.js           # 46 pruebas de integración (contrato + edge cases + login + administradores), requiere TEST_MONGODB_URI
 └── src/
     ├── index.js              # entry point: carga .env, conecta a DB, levanta Express
     ├── app.js                # createApp(): middlewares, rutas, 404 y error handler
@@ -56,7 +56,8 @@ backend/
     ├── middleware/
     │   ├── asyncHandler.js   # envuelve handlers async para propagar errores a Express
     │   ├── auth.js           # adminOnly / staff (token de sesión, ADMIN_TOKEN, VENDEDOR_TOKEN o X-User-Role: vendedor)
-    │   └── errorHandler.js   # 404 genérico + manejador central de errores
+    │   ├── errorHandler.js   # 404 genérico + manejador central de errores
+    │   └── loginLimiter.js   # 5 intentos fallidos por correo e IP → 429 durante 15 min (en memoria)
     ├── utils/
     │   ├── httpError.js      # HttpError(status, error, extra), validationError(), notFound()
     │   ├── validation.js     # isValidId, round2, escapeRegex, normalizePhoneOrEmail, parsePagination, paginated
@@ -322,3 +323,4 @@ frontend/
 - **2026-10-29** — Inicio de sesión del administrador con correo y contraseña: `POST /api/auth/login` (`auth.service.js`, hash scrypt y token de sesión firmado con HMAC de 8 h, sin dependencias nuevas), script `npm run hash-password`, variables `ADMIN_EMAIL` / `ADMIN_PASSWORD_HASH` / `AUTH_SECRET` (solo en `backend/.env`). `X-User-Role: admin` y el token por default `dev-admin-token` ya no dan acceso de admin; `ADMIN_TOKEN` solo si se define (CI usa `ci-admin-token`). Frontend: modal `<AdminLogin>` al elegir Administrador, correo y botón *Cerrar sesión* en el header, cierre automático si el token vence. Pruebas: 9 unitarias + 37 de integración; ejemplos REST Client (39) y Postman (37) con petición de login.
 - **2026-10-29** — Ícono de ojo para mostrar u ocultar la contraseña (`PasswordInput.jsx`). Edición de clientes desde la pantalla Clientes (`CustomerForm` ahora crea o edita; usa el `PUT /api/customers/:id` que ya existía). Registro de administradores: modelo `Admin` (colección `admins`), `GET/POST /api/admins` (solo admin), login que acepta al admin principal de `.env` y a los registrados, y pestaña **Administradores** en el frontend. Pruebas: 9 unitarias + 43 de integración (52), en MongoDB standalone y con réplica.
 - **2026-10-29** — Mensajes pensados para el personal de la cafetería, sin detalles técnicos. Backend: los `details[].message` de validación y negocio se reescribieron en lenguaje claro ("Escribe el nombre del producto.", "Solo quedan 3 de Concha y la cuenta pide 5.", "Elige un tamaño para Latte."); `field` conserva el nombre técnico para la API. Frontend: `services/api.js` traduce los casos que no son de validación (sin conexión → status 0, sesión de admin vencida, 403, 404, 5xx) y ya no muestra `HTTP <status>`; se quitaron textos técnicos ("No se pudo conectar con la API", "Configurado en backend/.env"). Nuevos `<StateMessage>` (con 8 ilustraciones SVG temáticas y botón Reintentar en errores de carga) y `<Notice>` (errores y confirmaciones con ícono) reemplazan a `.pos-empty`, `.form-error` y `.pos-success`.
+- **2026-10-29** — Revisión general (funcionamiento, código muerto y seguridad). Sin código muerto (exports, archivos, SVG, clases CSS, imports y variables revisados). Seguridad: `npm audit` pasó de 4 vulnerabilidades (1 crítica, 1 alta) a 0 con `npm audit fix` y `express@^4.22.3`; la validación de correo era vulnerable a ReDoS (un correo de 100 KB bloqueaba el servidor ~5 s) y ahora usa una regex lineal con largo máximo de 254; límite de intentos de login (`middleware/loginLimiter.js`, 429 tras 5 fallos); descripción de producto limitada a 500 caracteres; avisos al arrancar si falta `ADMIN_EMAIL`/`ADMIN_PASSWORD_HASH` o, en producción, `AUTH_SECRET`. Frontend: en Clientes y en la búsqueda de clientes del POS se ignoran respuestas viejas (una petición lenta ya no muestra el historial de otro cliente). 55 pruebas (9 unitarias + 46 de integración).

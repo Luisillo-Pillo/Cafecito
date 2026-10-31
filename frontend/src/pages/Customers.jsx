@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "../services/api";
 import CustomerForm from "../components/CustomerForm";
 import Ticket from "../components/Ticket";
@@ -21,17 +21,23 @@ function Customers({ role }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editing, setEditing] = useState(false);
   const [actionError, setActionError] = useState(null);
+  // Solo se aplica la respuesta de la última petición: una más lenta no pisa a la más reciente
+  const listRequest = useRef(0);
+  const salesRequest = useRef(0);
 
   const loadCustomers = useCallback((q = "") => {
+    const request = ++listRequest.current;
     setStatus("loading");
     const params = new URLSearchParams({ limit: "100" });
     if (q.trim()) params.set("q", q.trim());
     return apiFetch(`/customers?${params}`)
       .then((res) => {
+        if (request !== listRequest.current) return;
         setCustomers(res.data);
         setStatus("ready");
       })
       .catch((err) => {
+        if (request !== listRequest.current) return;
         setLoadError(err);
         setStatus("error");
       });
@@ -48,12 +54,15 @@ function Customers({ role }) {
     setEditing(false);
     setActionError(null);
     setSalesStatus("loading");
+    const request = ++salesRequest.current;
     apiFetch(`/customers/${customer.id}/sales?limit=50`)
       .then((res) => {
+        if (request !== salesRequest.current) return;
         setSales(res.data);
         setSalesStatus("ready");
       })
       .catch((err) => {
+        if (request !== salesRequest.current) return;
         setSalesError(err);
         setSalesStatus("error");
       });
