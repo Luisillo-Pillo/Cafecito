@@ -23,9 +23,7 @@ function saveSession(next) {
   try {
     if (next) localStorage.setItem(SESSION_KEY, JSON.stringify(next));
     else localStorage.removeItem(SESSION_KEY);
-  } catch {
-    // Sin almacenamiento disponible: la sesión solo dura mientras la pestaña esté abierta
-  }
+  } catch {}
   roleListeners.forEach((listener) => listener(getRole()));
 }
 
@@ -67,7 +65,6 @@ class ApiError extends Error {
   }
 }
 
-// Los mensajes de validación del backend ya están escritos para el usuario; el resto se traduce aquí
 function toApiError(status, body, hadSession) {
   const details = Array.isArray(body?.details) ? body.details : [];
   if (status === 401 && hadSession) return new ApiError(status, MESSAGES.session, details);
@@ -98,7 +95,6 @@ export async function apiFetch(path, { body, headers, ...options } = {}) {
   }
 
   if (!res.ok) {
-    // Token vencido o revocado (ej. cambió AUTH_SECRET): se vuelve a vendedor
     if (res.status === 401 && hadSession) logout();
     const errorBody = await res.json().catch(() => null);
     throw toApiError(res.status, errorBody, hadSession);

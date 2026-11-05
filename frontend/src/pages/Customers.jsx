@@ -5,23 +5,26 @@ import Ticket from "../components/Ticket";
 import Notice from "../components/Notice";
 import StateMessage, { LoadError } from "../components/StateMessage";
 import { currency, dateTimeFormat, discountLabel } from "../utils";
+import "../styles/layout.css";
+import "../styles/lists.css";
+import "../styles/forms.css";
+import "./Customers.css";
 
 function Customers({ role }) {
   const [customers, setCustomers] = useState([]);
-  const [status, setStatus] = useState("loading"); // loading | ready | error
+  const [status, setStatus] = useState("loading");
   const [loadError, setLoadError] = useState(null);
   const [query, setQuery] = useState("");
   const [showForm, setShowForm] = useState(false);
 
   const [selected, setSelected] = useState(null);
   const [sales, setSales] = useState([]);
-  const [salesStatus, setSalesStatus] = useState("idle"); // idle | loading | ready | error
+  const [salesStatus, setSalesStatus] = useState("idle");
   const [salesError, setSalesError] = useState(null);
   const [openSale, setOpenSale] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editing, setEditing] = useState(false);
   const [actionError, setActionError] = useState(null);
-  // Solo se aplica la respuesta de la última petición: una más lenta no pisa a la más reciente
   const listRequest = useRef(0);
   const salesRequest = useRef(0);
 

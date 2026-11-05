@@ -1,3 +1,5 @@
+import "./Notice.css";
+
 function Notice({ type = "error", children }) {
   return (
     <p className={`notice notice-${type}`} role={type === "error" ? "alert" : "status"}>

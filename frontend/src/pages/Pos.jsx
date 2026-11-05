@@ -7,6 +7,9 @@ import StateMessage, { LoadError } from "../components/StateMessage";
 import { getProductIcon } from "../productIcon";
 import { getProductImage } from "../productImages";
 import { normalize, currency, PAYMENT_METHODS, discountLabel } from "../utils";
+import "../styles/layout.css";
+import "../styles/lists.css";
+import "./Pos.css";
 
 function cartKey(productId, size) {
   return `${productId}::${size ?? ""}`;
@@ -36,10 +39,10 @@ function StockLabel({ product, inCart }) {
 
 function Pos() {
   const [products, setProducts] = useState([]);
-  const [productsStatus, setProductsStatus] = useState("loading"); // loading | ready | error
+  const [productsStatus, setProductsStatus] = useState("loading");
   const [loadError, setLoadError] = useState(null);
   const [productQuery, setProductQuery] = useState("");
-  const [cart, setCart] = useState([]); // [{ product, size, unitPrice, qty }]
+  const [cart, setCart] = useState([]);
 
   const [customerQuery, setCustomerQuery] = useState("");
   const [customerMatches, setCustomerMatches] = useState([]);
@@ -175,7 +178,6 @@ function Pos() {
       loadProducts();
     } catch (err) {
       setCheckoutError(err.message);
-      // Un 400 suele ser stock insuficiente: refresca las existencias reales
       if (err.status === 400) loadProducts();
     } finally {
       setCheckingOut(false);

@@ -5,6 +5,10 @@ import StateMessage, { LoadError } from "../components/StateMessage";
 import { getProductIcon } from "../productIcon";
 import { getProductImage } from "../productImages";
 import { currency, normalize } from "../utils";
+import "../styles/layout.css";
+import "../styles/lists.css";
+import "../styles/forms.css";
+import "./Products.css";
 
 const CATEGORIES = [
   { value: "bebida", label: "Bebida (3 tamaños)" },
@@ -194,7 +198,7 @@ function Products() {
   const [products, setProducts] = useState([]);
   const [status, setStatus] = useState("loading");
   const [query, setQuery] = useState("");
-  const [editing, setEditing] = useState(null); // null | "new" | producto
+  const [editing, setEditing] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [message, setMessage] = useState(null);
   const [error, setError] = useState(null);

@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { loginAdmin } from "../services/api";
 import Notice from "./Notice";
 import PasswordInput from "./PasswordInput";
+import "../styles/forms.css";
+import "./AdminLogin.css";
 
 function AdminLogin({ onClose }) {
   const [email, setEmail] = useState("");

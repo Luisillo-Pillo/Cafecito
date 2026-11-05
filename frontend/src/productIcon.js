@@ -1,6 +1,5 @@
 import { normalize } from "./utils";
 
-// El orden importa: lo específico va primero ("Pastel de zanahoria" → 🥕, "Chai Latte" → 🍵)
 const KEYWORD_ICONS = [
   { keywords: ["zanahoria"], icon: "🥕" },
   { keywords: ["pastel", "cake"], icon: "🍰" },

@@ -483,7 +483,6 @@ describe("API de Cafecito (integración)", { skip }, () => {
     });
 
     it("dos ventas simultáneas no dejan el stock negativo", async () => {
-      // Quedan 5 conchas: dos ventas de 3 a la vez → solo una puede pasar
       const body = { items: [{ productId: ids.concha, quantity: 3 }] };
       const results = await Promise.all([
         api("POST", "/sales", { role: "vendedor", body }),

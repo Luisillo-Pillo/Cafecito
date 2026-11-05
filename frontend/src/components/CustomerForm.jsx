@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { apiFetch } from "../services/api";
 import Notice from "./Notice";
+import "../styles/forms.css";
 
 function CustomerForm({ customer, onSaved, onCancel }) {
   const [form, setForm] = useState({

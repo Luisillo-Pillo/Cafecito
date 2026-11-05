@@ -5,6 +5,7 @@ import Products from "./pages/Products";
 import Admins from "./pages/Admins";
 import AdminLogin from "./components/AdminLogin";
 import { getRole, getSessionEmail, logout, onRoleChange } from "./services/api";
+import "./App.css";
 
 const VIEWS = [
   { id: "pos", label: "Punto de venta", roles: ["vendedor", "admin"] },
@@ -66,7 +67,6 @@ function App() {
 
       {showLogin && <AdminLogin onClose={() => setShowLogin(false)} />}
 
-      {/* key={role}: al cambiar de rol las pantallas se recargan con los permisos nuevos */}
       {activeView === "pos" && <Pos key={role} />}
       {activeView === "clientes" && <Customers key={role} role={role} />}
       {activeView === "productos" && <Products key={role} />}

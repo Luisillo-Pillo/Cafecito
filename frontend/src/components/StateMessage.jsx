@@ -6,6 +6,7 @@ import loading from "../assets/illustrations/loading.svg";
 import menu from "../assets/illustrations/menu.svg";
 import receipt from "../assets/illustrations/receipt.svg";
 import search from "../assets/illustrations/search.svg";
+import "./StateMessage.css";
 
 const ILLUSTRATIONS = {
   connection,

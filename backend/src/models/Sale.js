@@ -30,7 +30,6 @@ const saleSchema = new Schema(
     discountPercent: { type: Number, default: 0, min: 0, max: 100 },
     discountAmount: { type: Number, default: 0, min: 0 },
     total: { type: Number, required: true, min: 0 },
-    // Solo para ventas migradas desde la colección antigua `orders`
     legacyOrderId: { type: Schema.Types.ObjectId, default: undefined },
   },
   { timestamps: true }

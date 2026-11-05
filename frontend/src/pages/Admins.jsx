@@ -4,6 +4,10 @@ import PasswordInput from "../components/PasswordInput";
 import Notice from "../components/Notice";
 import StateMessage, { LoadError } from "../components/StateMessage";
 import { dateTimeFormat } from "../utils";
+import "../styles/layout.css";
+import "../styles/lists.css";
+import "../styles/forms.css";
+import "./Admins.css";
 
 const MIN_PASSWORD_LENGTH = 8;
 const EMPTY_FORM = { name: "", email: "", password: "", confirm: "" };

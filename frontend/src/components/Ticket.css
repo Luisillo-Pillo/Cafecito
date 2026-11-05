@@ -1,0 +1,147 @@
+.ticket-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 15, 10, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 10;
+}
+
+.ticket {
+  background: #fff;
+  color: #2a2522;
+  width: min(360px, 100%);
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  border-radius: 10px;
+  padding: 1.5rem 1.25rem;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 0.85rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.ticket-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  text-align: center;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px dashed #bbb;
+}
+
+.ticket-header strong {
+  font-size: 1.05rem;
+}
+
+.ticket-id {
+  color: #777;
+  font-size: 0.75rem;
+}
+
+.ticket-customer {
+  margin: 0.75rem 0 0.5rem;
+}
+
+.ticket-items {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ticket-items th {
+  text-align: left;
+  font-weight: 600;
+  border-bottom: 1px dashed #bbb;
+  padding: 0.25rem 0;
+}
+
+.ticket-items td {
+  vertical-align: top;
+  padding: 0.3rem 0;
+}
+
+.ticket-items th:nth-child(n + 2),
+.ticket-items td:nth-child(n + 2) {
+  text-align: right;
+  white-space: nowrap;
+  padding-left: 0.5rem;
+}
+
+.ticket-unit {
+  display: block;
+  color: #777;
+  font-size: 0.75rem;
+}
+
+.ticket-totals {
+  margin: 0.75rem 0 0;
+  padding-top: 0.5rem;
+  border-top: 1px dashed #bbb;
+}
+
+.ticket-totals > div {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.15rem 0;
+}
+
+.ticket-totals dt,
+.ticket-totals dd {
+  margin: 0;
+}
+
+.ticket-total {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.ticket-thanks {
+  text-align: center;
+  margin: 1rem 0 0;
+}
+
+.ticket-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.ticket-actions button {
+  flex: 1;
+  padding: 0.55rem;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  background: #faf7f2;
+  color: #2a2522;
+}
+
+.ticket-actions .ticket-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .ticket,
+  .ticket * {
+    visibility: visible;
+  }
+
+  .ticket {
+    position: absolute;
+    top: 0;
+    left: 0;
+    box-shadow: none;
+  }
+
+  .ticket-actions {
+    display: none;
+  }
+}

@@ -29,9 +29,7 @@ async function waitForHealth(retries = 30) {
     try {
       const { status, data } = await call("GET", "/health");
       if (status === 200 && data.db === "connected") return;
-    } catch {
-      // el servidor todavía no acepta conexiones
-    }
+    } catch {}
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
   console.error(`❌ La API no respondió en ${API_URL}/health`);
