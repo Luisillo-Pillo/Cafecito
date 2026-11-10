@@ -11,7 +11,9 @@ Cafecito/
 ├── .github/         # pipeline de CI (workflows/ci.yml) y plantilla de Pull Request
 ├── backend/         # API Express (routes → controllers → services → models) + Mongoose
 ├── frontend/        # SPA React + Vite
+├── e2e/             # pruebas de extremo a extremo con Playwright
 ├── CONTRIBUTING.md  # tablero, ramas, flujo de PR y Definition of Done
+├── docs/scrum/      # entregables de Scrum de los Sprints 0 a 5
 └── package.json     # raíz del monorepo (npm workspaces)
 ```
 
@@ -152,4 +154,5 @@ Se trabaja con ramas `feature/<historia>` que salen de `develop` y regresan por 
 
 - [`Prompt_Inicial_Claude.md`](Prompt_Inicial_Claude.md): especificación completa del proyecto y historial de cambios.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md): tablero, ramas, PRs, conflictos y Definition of Done.
+- [`docs/scrum/`](docs/scrum/README.md): entregables de Scrum por sprint (backlog, refinamiento, estimación, tablero y ramas, plan de validación, hábitos, pipeline y reflexión). El tablero vive en GitHub Projects con las historias #5 a #14.
 - Reportar errores: abre un *issue* en el repositorio de GitHub.
