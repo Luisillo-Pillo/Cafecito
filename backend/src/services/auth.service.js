@@ -66,6 +66,14 @@ async function findAdminCredentials(email) {
   return admin ? { email: admin.email, passwordHash: admin.passwordHash } : null;
 }
 
+// Un token firmado sigue siendo válido hasta que vence; para que eliminar a un administrador
+// cierre sus sesiones abiertas, cada petición confirma que la cuenta todavía existe
+async function isActiveAdmin(email) {
+  const ownerEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  if (ownerEmail && email === ownerEmail) return true;
+  return Boolean(await Admin.exists({ email }));
+}
+
 async function login(body = {}) {
   const { email, password } = body;
   const details = [];
@@ -91,4 +99,11 @@ async function login(body = {}) {
   return { token, role: ROLES.ADMIN, email: credentials.email, expiresAt };
 }
 
-module.exports = { hashPassword, verifyPassword, createSessionToken, verifySessionToken, login };
+module.exports = {
+  hashPassword,
+  verifyPassword,
+  createSessionToken,
+  verifySessionToken,
+  isActiveAdmin,
+  login,
+};

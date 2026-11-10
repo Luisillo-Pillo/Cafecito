@@ -1,5 +1,5 @@
 const { ROLES } = require("../config/constants");
-const { verifySessionToken } = require("../services/auth.service");
+const { verifySessionToken, isActiveAdmin } = require("../services/auth.service");
 
 const VALID_ROLES = Object.values(ROLES);
 
@@ -63,9 +63,19 @@ function resolveRole(req) {
 }
 
 function requireRole(...allowedRoles) {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     const { role, email, error } = resolveRole(req);
     if (error) return res.status(401).json(error);
+
+    try {
+      if (email && !(await isActiveAdmin(email))) {
+        return res
+          .status(401)
+          .json(authError("Sesión no válida", "Authorization", "Esta cuenta de administrador ya no existe"));
+      }
+    } catch (err) {
+      return next(err);
+    }
 
     if (!allowedRoles.includes(role)) {
       const message = `Esta acción solo la puede hacer: ${allowedRoles.join(", ")}`;

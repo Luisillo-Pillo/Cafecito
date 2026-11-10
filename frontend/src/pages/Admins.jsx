@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { apiFetch } from "../services/api";
+import { apiFetch, getSessionEmail } from "../services/api";
 import PasswordInput from "../components/PasswordInput";
 import Notice from "../components/Notice";
 import StateMessage, { LoadError } from "../components/StateMessage";
@@ -21,6 +21,7 @@ function Admins() {
   const [error, setError] = useState(null);
   const [message, setMessage] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
 
   const loadAdmins = useCallback(() => {
     return apiFetch("/admins")
@@ -65,6 +66,19 @@ function Admins() {
     }
   };
 
+  const handleDelete = async (admin) => {
+    setError(null);
+    setMessage(null);
+    try {
+      await apiFetch(`/admins/${admin.id}`, { method: "DELETE" });
+      setMessage(`${admin.name} ya no tiene acceso de administrador.`);
+      setDeletingId(null);
+      loadAdmins();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   return (
     <main className="pos-main">
       <section className="pos-products">
@@ -105,6 +119,25 @@ function Admins() {
                   {admin.createdBy && ` por ${admin.createdBy}`}
                 </span>
               </div>
+
+              {admin.email !== getSessionEmail() && (
+                <div className="admin-product-actions">
+                  {deletingId === admin.id ? (
+                    <>
+                      <button type="button" className="danger" onClick={() => handleDelete(admin)}>
+                        Eliminar
+                      </button>
+                      <button type="button" onClick={() => setDeletingId(null)}>
+                        No
+                      </button>
+                    </>
+                  ) : (
+                    <button type="button" onClick={() => setDeletingId(admin.id)}>
+                      Eliminar
+                    </button>
+                  )}
+                </div>
+              )}
             </li>
           ))}
         </ul>

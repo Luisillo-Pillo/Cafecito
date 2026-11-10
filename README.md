@@ -111,7 +111,7 @@ Base URL `http://localhost:5000/api`. Sigue el **Contrato de API del Kit de Arra
 | `POST /api/products`, `PUT/DELETE /api/products/:id` | admin |
 | `GET/POST /api/customers`, `GET/PUT /api/customers/:id`, `GET /api/customers/:id/sales` | vendedor, admin |
 | `DELETE /api/customers/:id` | admin |
-| `GET/POST /api/admins` | admin |
+| `GET/POST /api/admins`, `DELETE /api/admins/:id` | admin |
 | `POST /api/auth/login` | público |
 | `POST /api/sales`, `GET /api/sales`, `GET /api/sales/:id` | vendedor, admin |
 
