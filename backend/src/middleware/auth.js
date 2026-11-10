@@ -1,15 +1,16 @@
 const { ROLES } = require("../config/constants");
+const { verifySessionToken, isActiveAdmin } = require("../services/auth.service");
 
 const VALID_ROLES = Object.values(ROLES);
 
-// En producción solo valen los tokens definidos en el entorno (sin defaults de desarrollo)
-function tokenRoles() {
+// El rol admin nunca tiene token por default: se obtiene con POST /api/auth/login o con un
+// ADMIN_TOKEN definido explícitamente en el entorno (CI, Postman)
+function staticTokenRoles() {
   const isProd = process.env.NODE_ENV === "production";
-  const adminToken = process.env.ADMIN_TOKEN || (isProd ? null : "dev-admin-token");
   const vendedorToken = process.env.VENDEDOR_TOKEN || (isProd ? null : "dev-vendedor-token");
 
   const map = new Map();
-  if (adminToken) map.set(adminToken, ROLES.ADMIN);
+  if (process.env.ADMIN_TOKEN) map.set(process.env.ADMIN_TOKEN, ROLES.ADMIN);
   if (vendedorToken) map.set(vendedorToken, ROLES.VENDEDOR);
   return map;
 }
@@ -19,14 +20,15 @@ const authError = (error, field, message) => ({ error, details: [{ field, messag
 function resolveRole(req) {
   const authorization = req.get("Authorization");
   if (authorization) {
-    const match = /^Bearer\s+(\S+)$/i.exec(authorization.trim());
-    const role = match && tokenRoles().get(match[1]);
+    const token = /^Bearer\s+(\S+)$/i.exec(authorization.trim())?.[1];
+    const session = token ? verifySessionToken(token) : null;
+    const role = session?.role ?? (token && staticTokenRoles().get(token));
     if (!role) {
       return {
         error: authError("Token inválido", "Authorization", "El token está mal formado o no es válido"),
       };
     }
-    return { role };
+    return { role, email: session?.email ?? null };
   }
 
   const headerRole = req.get("X-User-Role")?.trim().toLowerCase();
@@ -36,6 +38,15 @@ function resolveRole(req) {
         "Autenticación requerida",
         "Authorization",
         "Falta el token (Authorization: Bearer <token>) o el header X-User-Role"
+      ),
+    };
+  }
+  if (headerRole === ROLES.ADMIN) {
+    return {
+      error: authError(
+        "Inicio de sesión requerido",
+        "Authorization",
+        "Para actuar como administrador inicia sesión (POST /api/auth/login) y envía el token Bearer"
       ),
     };
   }
@@ -52,9 +63,19 @@ function resolveRole(req) {
 }
 
 function requireRole(...allowedRoles) {
-  return (req, res, next) => {
-    const { role, error } = resolveRole(req);
+  return async (req, res, next) => {
+    const { role, email, error } = resolveRole(req);
     if (error) return res.status(401).json(error);
+
+    try {
+      if (email && !(await isActiveAdmin(email))) {
+        return res
+          .status(401)
+          .json(authError("Sesión no válida", "Authorization", "Esta cuenta de administrador ya no existe"));
+      }
+    } catch (err) {
+      return next(err);
+    }
 
     if (!allowedRoles.includes(role)) {
       const message = `Esta acción solo la puede hacer: ${allowedRoles.join(", ")}`;
@@ -62,6 +83,7 @@ function requireRole(...allowedRoles) {
     }
 
     req.userRole = role;
+    req.userEmail = email ?? null;
     next();
   };
 }

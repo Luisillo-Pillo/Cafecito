@@ -1,0 +1,39 @@
+.pos-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 1.5rem;
+  padding: 1.5rem;
+}
+
+.order-summary {
+  position: sticky;
+  top: 1.5rem;
+  align-self: start;
+  max-height: calc(100vh - 3rem);
+  overflow-y: auto;
+}
+
+.pos-cart {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  height: fit-content;
+}
+
+.pos-cart h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+@media (max-width: 720px) {
+  .pos-main {
+    grid-template-columns: 1fr;
+  }
+}

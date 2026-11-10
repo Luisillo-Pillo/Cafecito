@@ -1,0 +1,52 @@
+.admin-product.is-active {
+  border-color: var(--accent);
+}
+
+.admin-product-image {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.admin-product-icon {
+  font-size: 1.8rem;
+  width: 44px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.product-form-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.product-form-row > * {
+  flex: 1;
+  min-width: 0;
+}
+
+.product-form-sizes {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.product-form-sizes legend {
+  color: var(--muted);
+  padding: 0 0.3rem;
+}
+
+.product-form label.product-form-check {
+  flex-direction: row;
+  align-items: center;
+  color: var(--text);
+}
+
+.product-form-check input {
+  width: auto;
+}

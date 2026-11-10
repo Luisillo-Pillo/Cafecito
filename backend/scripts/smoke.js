@@ -1,7 +1,7 @@
 // Smoke test contra una API ya levantada. Crea datos de prueba: no usar contra producción.
 // Se llama smoke.js (no *-test.js) para que `node --test` no lo ejecute.
 const API_URL = process.env.API_URL ?? "http://localhost:5000/api";
-const ADMIN = { Authorization: `Bearer ${process.env.ADMIN_TOKEN || "dev-admin-token"}` };
+const ADMIN = { Authorization: `Bearer ${process.env.ADMIN_TOKEN}` };
 const VENDEDOR = { Authorization: `Bearer ${process.env.VENDEDOR_TOKEN || "dev-vendedor-token"}` };
 
 async function call(method, path, { body, headers = {} } = {}) {
@@ -29,9 +29,7 @@ async function waitForHealth(retries = 30) {
     try {
       const { status, data } = await call("GET", "/health");
       if (status === 200 && data.db === "connected") return;
-    } catch {
-      // el servidor todavía no acepta conexiones
-    }
+    } catch {}
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
   console.error(`❌ La API no respondió en ${API_URL}/health`);
@@ -39,6 +37,10 @@ async function waitForHealth(retries = 30) {
 }
 
 async function main() {
+  if (!process.env.ADMIN_TOKEN) {
+    console.error("❌ Define ADMIN_TOKEN (el mismo que usa la API) para las peticiones de admin");
+    process.exit(1);
+  }
   await waitForHealth();
   const unique = Date.now();
 
@@ -67,6 +69,9 @@ async function main() {
   );
   await step("GET /sales/:id", 200, () => call("GET", `/sales/${sale.saleId}`, { headers: VENDEDOR }));
 
+  await step("POST /auth/login con contraseña incorrecta", 401, () =>
+    call("POST", "/auth/login", { body: { email: "nadie@example.com", password: "incorrecta" } })
+  );
   await step("POST /products sin token", 401, () =>
     call("POST", "/products", { body: { name: "X", price: 1, stock: 1 } })
   );

@@ -3,17 +3,42 @@
 ### Las peticiones con "# @name" guardan su respuesta para reutilizar ids más abajo.
 ### Ejecútalas en orden la primera vez.
 
-### Autenticación: header "X-User-Role: admin | vendedor" (desarrollo) o
-### "Authorization: Bearer <token>" (tokens de ADMIN_TOKEN / VENDEDOR_TOKEN en .env).
+### Autenticación: el admin inicia sesión con "Login de administrador" (pide correo y contraseña
+### al enviarla) y las peticiones de admin usan su token. El vendedor usa "X-User-Role: vendedor"
+### o "Authorization: Bearer <VENDEDOR_TOKEN>".
 
 @baseUrl = http://localhost:5000/api
 @contentType = application/json
-@adminToken = dev-admin-token
+@adminToken = {{login.response.body.token}}
 @vendedorToken = dev-vendedor-token
 
 ### ─────────────────────────── Salud ───────────────────────────
 
 GET {{baseUrl}}/health
+
+### ─────────────────────────── Autenticación ───────────────────────────
+
+### Login de administrador → 200 con token (ejecútalo antes de las peticiones de admin)
+# @name login
+# @prompt email Correo del administrador
+# @prompt password Contraseña del administrador
+POST {{baseUrl}}/auth/login
+Content-Type: {{contentType}}
+
+{ "email": "{{email}}", "password": "{{password}}" }
+
+### Login con contraseña incorrecta → 401
+POST {{baseUrl}}/auth/login
+Content-Type: {{contentType}}
+
+{ "email": "admin@example.com", "password": "incorrecta" }
+
+### X-User-Role: admin sin iniciar sesión → 401
+POST {{baseUrl}}/products
+Content-Type: {{contentType}}
+X-User-Role: admin
+
+{ "name": "Café", "price": 5, "stock": 100 }
 
 ### ─────────────────────────── Productos ───────────────────────────
 
@@ -33,7 +58,7 @@ GET {{baseUrl}}/products?page=-1&limit=abc
 # @name crearProducto
 POST {{baseUrl}}/products
 Content-Type: {{contentType}}
-X-User-Role: admin
+Authorization: Bearer {{adminToken}}
 
 {
   "name": "Galleta artesanal",
@@ -46,7 +71,7 @@ X-User-Role: admin
 # @name crearBebida
 POST {{baseUrl}}/products
 Content-Type: {{contentType}}
-X-User-Role: admin
+Authorization: Bearer {{adminToken}}
 
 {
   "name": "Espresso doble",
@@ -86,21 +111,21 @@ X-User-Role: vendedor
 ### Producto sin nombre y precio negativo → 422
 POST {{baseUrl}}/products
 Content-Type: {{contentType}}
-X-User-Role: admin
+Authorization: Bearer {{adminToken}}
 
 { "price": -5, "stock": 100 }
 
 ### Actualizar precio y stock (admin) → 200
 PUT {{baseUrl}}/products/{{crearProducto.response.body.id}}
 Content-Type: {{contentType}}
-X-User-Role: admin
+Authorization: Bearer {{adminToken}}
 
 { "price": 28, "stock": 35 }
 
 ### Actualizar producto que no existe → 404
 PUT {{baseUrl}}/products/000000000000000000000000
 Content-Type: {{contentType}}
-X-User-Role: admin
+Authorization: Bearer {{adminToken}}
 
 { "price": 10 }
 
@@ -281,12 +306,12 @@ X-User-Role: vendedor
 
 ### Eliminar producto de prueba (admin) → 200
 DELETE {{baseUrl}}/products/{{crearProducto.response.body.id}}
-X-User-Role: admin
+Authorization: Bearer {{adminToken}}
 
 ### Eliminar bebida de prueba (admin) → 200
 DELETE {{baseUrl}}/products/{{crearBebida.response.body.id}}
-X-User-Role: admin
+Authorization: Bearer {{adminToken}}
 
 ### Eliminar cliente de prueba (admin) → 200
 DELETE {{baseUrl}}/customers/{{crearCliente.response.body.id}}
-X-User-Role: admin
+Authorization: Bearer {{adminToken}}

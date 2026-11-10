@@ -1,4 +1,5 @@
 import { currency, dateTimeFormat } from "../utils";
+import "./Ticket.css";
 
 function Ticket({ sale, onClose, closeLabel = "Nueva venta" }) {
   const { ticket } = sale;

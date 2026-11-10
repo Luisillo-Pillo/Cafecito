@@ -12,13 +12,19 @@ function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Las etiquetas del dominio no incluyen puntos para que la regex sea lineal (sin ReDoS), y el
+// largo se limita antes de evaluarla (254 es el máximo de un correo según el RFC)
+const EMAIL_REGEX = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
+const MAX_EMAIL_LENGTH = 254;
 const PHONE_REGEX = /^\+\d{8,15}$/;
+
+const isValidEmail = (value) =>
+  typeof value === "string" && value.length <= MAX_EMAIL_LENGTH && EMAIL_REGEX.test(value);
 
 function normalizePhoneOrEmail(value) {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
-  if (EMAIL_REGEX.test(trimmed)) return trimmed.toLowerCase();
+  if (isValidEmail(trimmed)) return trimmed.toLowerCase();
   const phone = trimmed.replace(/[\s\-()]/g, "");
   if (PHONE_REGEX.test(phone)) return phone;
   return null;
@@ -34,7 +40,7 @@ function parsePagination(query, { defaultLimit = 20, maxLimit = 100 } = {}) {
       details.push({
         field: "page",
         value: query.page,
-        message: "page debe ser un entero mayor o igual a 1",
+        message: "La página debe ser un número entero de 1 en adelante.",
       });
     }
   }
@@ -46,7 +52,7 @@ function parsePagination(query, { defaultLimit = 20, maxLimit = 100 } = {}) {
       details.push({
         field: "limit",
         value: query.limit,
-        message: `limit debe ser un entero entre 1 y ${maxLimit}`,
+        message: `El límite debe ser un número entero entre 1 y ${maxLimit}.`,
       });
     }
   }
@@ -69,6 +75,7 @@ module.exports = {
   isPositiveInteger,
   round2,
   escapeRegex,
+  isValidEmail,
   normalizePhoneOrEmail,
   parsePagination,
   paginated,

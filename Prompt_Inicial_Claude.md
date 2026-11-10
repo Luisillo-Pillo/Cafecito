@@ -19,6 +19,8 @@ Quiero que generes un proyecto fullstack llamado **Cafecito** (una app para gest
 Cafecito/
 ├── backend/     # API Express + Mongoose + MongoDB Atlas (CommonJS)
 ├── frontend/    # SPA React + Vite (ESM)
+├── e2e/         # pruebas de extremo a extremo con Playwright (workspace propio)
+├── docs/scrum/  # entregables de Scrum de los Sprints 0 a 5 (un .md por sprint)
 ├── package.json # raíz del monorepo (workspaces)
 └── README.md
 ```
@@ -36,15 +38,17 @@ Cafecito/
 backend/
 ├── .env.example
 ├── package.json
-├── ejemplos-api.http         # 36 requests para VS Code REST Client (éxito y error)
-├── postman-collection.json   # 35 requests para Postman con asserts de status y variables de ids
+├── ejemplos-api.http         # 39 requests para VS Code REST Client (éxito y error; el login pide correo y contraseña)
+├── postman-collection.json   # 37 requests para Postman con asserts de status y variables (el login guarda adminToken)
 ├── scripts/
 │   ├── seed.js               # npm run seed: datos de ejemplo SOLO si las colecciones están vacías
 │   ├── migrate-mvp.js        # npm run migrate: migra datos del modelo anterior (idempotente)
-│   └── smoke.js              # npm run smoke: smoke test contra una API levantada (API_URL)
+│   ├── smoke.js              # npm run smoke: smoke test contra una API levantada (API_URL + ADMIN_TOKEN)
+│   └── hash-password.js      # npm run hash-password: genera ADMIN_PASSWORD_HASH
 ├── test/
 │   ├── discount.test.js      # pruebas unitarias de la regla de descuento
-│   └── api.test.js           # 32 pruebas de integración (contrato + edge cases), requiere TEST_MONGODB_URI
+│   ├── auth.test.js          # pruebas unitarias de hash de contraseña y token de sesión
+│   └── api.test.js           # 46 pruebas de integración (contrato + edge cases + login + administradores), requiere TEST_MONGODB_URI
 └── src/
     ├── index.js              # entry point: carga .env, conecta a DB, levanta Express
     ├── app.js                # createApp(): middlewares, rutas, 404 y error handler
@@ -53,27 +57,35 @@ backend/
     │   └── constants.js      # STORE_NAME, ROLES, PAYMENT_METHODS, PRODUCT_CATEGORIES, DRINK_SIZES_COUNT
     ├── middleware/
     │   ├── asyncHandler.js   # envuelve handlers async para propagar errores a Express
-    │   ├── auth.js           # adminOnly / staff (header X-User-Role o Bearer)
-    │   └── errorHandler.js   # 404 genérico + manejador central de errores
+    │   ├── auth.js           # adminOnly / staff (token de sesión, ADMIN_TOKEN, VENDEDOR_TOKEN o X-User-Role: vendedor)
+    │   ├── errorHandler.js   # 404 genérico + manejador central de errores
+    │   └── loginLimiter.js   # 5 intentos fallidos por correo e IP → 429 durante 15 min (en memoria)
     ├── utils/
     │   ├── httpError.js      # HttpError(status, error, extra), validationError(), notFound()
     │   ├── validation.js     # isValidId, round2, escapeRegex, normalizePhoneOrEmail, parsePagination, paginated
     │   └── toJSON.js         # serialización: expone `id`, oculta `_id` y `__v`
     ├── models/
+    │   ├── Admin.js          # administradores registrados desde la app (name, email único, passwordHash, createdBy)
     │   ├── Product.js
     │   ├── Customer.js
     │   └── Sale.js           # venta + items (SaleItem embebido)
     ├── services/             # lógica de negocio y validaciones con mensajes del contrato
     │   ├── discount.service.js   # calculateDiscount(purchasesCount)
+    │   ├── auth.service.js       # login, hash scrypt y token de sesión
+    │   ├── admin.service.js      # listAdmins(), createAdmin()
     │   ├── product.service.js
     │   ├── customer.service.js
     │   └── sale.service.js       # createSale(): flujo completo de una venta
     ├── controllers/          # traducen request → servicio → respuesta HTTP
+    │   ├── auth.controller.js
+    │   ├── admin.controller.js
     │   ├── product.controller.js
     │   ├── customer.controller.js
     │   └── sale.controller.js
     └── routes/
         ├── health.routes.js   # GET /api/health
+        ├── auth.routes.js     # POST /api/auth/login
+        ├── admin.routes.js    # GET/POST /api/admins y DELETE /api/admins/:id (solo admin)
         ├── product.routes.js
         ├── customer.routes.js
         └── sale.routes.js
@@ -99,9 +111,16 @@ backend/
 **`src/middleware/asyncHandler.js`:**
 - Helper `asyncHandler(fn)` que envuelve un route handler async y hace `.catch(next)` sobre la promesa, porque Express 4 no captura rechazos de promesas automáticamente.
 
-**`src/middleware/auth.js` — autenticación básica del MVP:**
-- `Authorization: Bearer <token>`: el rol sale del token (`ADMIN_TOKEN` / `VENDEDOR_TOKEN` del `.env`; fuera de producción valen por default `dev-admin-token` y `dev-vendedor-token`). Token mal formado o desconocido → `401 { error: "Token inválido" }`.
-- Sin `Authorization`, se acepta el "header estático para desarrollo" que permite el Kit: `X-User-Role: admin | vendedor` (lo usa el frontend). Rol desconocido → `401 { error: "Credencial inválida" }`.
+**Inicio de sesión del administrador (`POST /api/auth/login`, `services/auth.service.js`):**
+- Body `{ email, password }` → `200 { token, role: "admin", email, expiresAt }`. Faltan campos → `422`; correo o contraseña incorrectos → `401 { error: "Credenciales inválidas" }` con el mismo mensaje en ambos casos (la contraseña se verifica aunque el correo no coincida, para no revelar por tiempo qué correo existe).
+- **Admin principal** en `backend/.env` (nunca en el repo): `ADMIN_EMAIL` y `ADMIN_PASSWORD_HASH` (scrypt con sal aleatoria, formato `scrypt$<sal>$<hash>`, generado con `npm run hash-password --workspace=backend -- "<contraseña>"`). Siempre puede entrar, aunque la base de datos cambie.
+- **Admins registrados** desde la app en la colección `admins` (modelo `Admin`, `toJSON` nunca expone `passwordHash`). El login busca primero al principal y luego en la colección; si el correo no existe, la contraseña se verifica contra un hash de relleno para no revelar por tiempo qué correos existen. Comparaciones con `crypto.timingSafeEqual`.
+- `GET /api/admins` (solo admin) → `{ owner, data }` (`owner` = correo del principal). `POST /api/admins` (solo admin) con `{ name, email, password }` → `201` sin la contraseña; `name` 2–100, correo válido, `password` de 8+ caracteres → si no, `422`; correo repetido o igual al del principal → `400 "El administrador ya existe"`. Guarda `createdBy` con el correo del admin que lo registró (el middleware deja `req.userEmail` a partir del token de sesión). `DELETE /api/admins/:id` (solo admin) → `204`; id inexistente → `404`; eliminarse a sí mismo → `400 "No puedes eliminar tu propia cuenta"`; el principal de `.env` no está en la colección, así que no se puede eliminar. **Revocación:** en cada petición con token de sesión, `requireRole` confirma con `isActiveAdmin(email)` que la cuenta sigue existiendo; si se eliminó → `401 "Sesión no válida"`.
+- El token es `base64url(payload).firma` con HMAC-SHA256 y `AUTH_SECRET`; dura 8 horas. Sin `AUTH_SECRET` se usa un secreto aleatorio por proceso (las sesiones se pierden al reiniciar). Sin dependencias extra (solo `node:crypto`).
+
+**`src/middleware/auth.js` — autorización:**
+- `Authorization: Bearer <token>`: vale el token de sesión del login (rol admin), un `ADMIN_TOKEN` fijo si está definido en el entorno (CI, Postman; **sin valor por default**) o `VENDEDOR_TOKEN` (fuera de producción vale por default `dev-vendedor-token`). Token mal formado, alterado, vencido o desconocido → `401 { error: "Token inválido" }`.
+- Sin `Authorization`, se acepta el "header estático para desarrollo" que permite el Kit, **solo para vendedor**: `X-User-Role: vendedor` (lo usa el frontend). `X-User-Role: admin` → `401 { error: "Inicio de sesión requerido" }`; rol desconocido → `401 { error: "Credencial inválida" }`.
 - Sin ninguna credencial → `401 { error: "Autenticación requerida" }`; rol sin permiso → `403 { error: "Permisos insuficientes" }`.
 - `requireRole(...roles)` (interno) expone los atajos `adminOnly` y `staff` (admin o vendedor). Se puede cambiar por JWT más adelante sin tocar las rutas.
 
@@ -171,7 +190,7 @@ Mensajes de error y de API en español; la estructura (`error`, `details`, `id`)
 - `npm run migrate` (`scripts/migrate-mvp.js [stockInicial=50]`): productos sin `stock` → stock inicial; clientes con `email`/`phone` → `phoneOrEmail` (email) y borra el índice viejo `email_1`; copia `orders` → `sales` (sin descuento, efectivo, misma fecha; `orders` no se borra); recalcula `purchasesCount` contando ventas. Idempotente.
 - `npm run seed` (`scripts/seed.js`): inserta 8 productos y 5 clientes de ejemplo (con `purchasesCount` que cubren los 4 niveles de descuento) **solo si** las colecciones están vacías; si la base estaba totalmente vacía, registra además 3 ventas de ejemplo con `createSale()` (5%, 15% y público general). Nunca borra.
 - `npm run smoke` (`scripts/smoke.js`): espera a `/health` y prueba health, listar productos, crear producto/cliente/venta, consultar la venta, 401 sin token y 400 por stock; limpia lo que creó. Sale con código 1 si algo falla. (Se llama `smoke.js` y no `smoke-test.js` para que `node --test` no lo tome como prueba.)
-- `npm test`: `node --test` → `test/discount.test.js` (unitarias) y `test/api.test.js` (integración: levanta `createApp()` en un puerto libre contra `TEST_MONGODB_URI`; **se omite** si la variable no existe y se niega a correr si el nombre de la base no termina en `_test`, porque borra sus colecciones). Incluye la prueba de dos ventas simultáneas que no deben dejar stock negativo y la de una falla simulada de la BD al guardar (500 sin cambios en stock, ventas ni `purchasesCount`).
+- `npm test`: `node --test` → `test/discount.test.js` y `test/auth.test.js` (unitarias) y `test/api.test.js` (integración: levanta `createApp()` en un puerto libre contra `TEST_MONGODB_URI`, con credenciales de admin de prueba propias; **se omite** si la variable no existe y se niega a correr si el nombre de la base no termina en `_test`, porque borra sus colecciones). Incluye la prueba de dos ventas simultáneas que no deben dejar stock negativo, la de una falla simulada de la BD al guardar (500 sin cambios en stock, ventas ni `purchasesCount`) y las de login (correcto, incorrecto, campos faltantes, `X-User-Role: admin`, token alterado y vencido).
 
 **Variables de entorno (`backend/.env.example`):**
 ```
@@ -179,7 +198,10 @@ PORT=5000
 NODE_ENV=development
 DB_CONNECTION_STRING=mongodb+srv://<usuario>:<password>@<cluster>.mongodb.net/cafecito?retryWrites=true&w=majority&appName=Cafecito
 CORS_ORIGIN=http://localhost:5173
-ADMIN_TOKEN=
+ADMIN_EMAIL=
+ADMIN_PASSWORD_HASH=   # npm run hash-password --workspace=backend -- "<contraseña>"
+AUTH_SECRET=
+ADMIN_TOKEN=           # opcional (CI, Postman)
 VENDEDOR_TOKEN=
 # TEST_MONGODB_URI=mongodb://127.0.0.1:27017/cafecito_test
 ```
@@ -192,30 +214,42 @@ VENDEDOR_TOKEN=
 ```
 frontend/
 ├── .env.example
+├── public/favicon.svg        # ícono de la pestaña (taza sobre el café de acento #6b4226)
 ├── index.html
 ├── package.json
 ├── vite.config.js
 └── src/
     ├── main.jsx               # entry point: createRoot + StrictMode
-    ├── App.jsx                # raíz: header + selector de rol + switch de vista (pos | clientes | productos)
+    ├── App.jsx                # raíz: header + selector de rol (admin pide login) + switch de vista (pos | clientes | productos)
     ├── services/api.js        # apiFetch() (lanza ApiError), getRole()/setRole()
     ├── utils.js                # normalize(), slugify(), currency, dateTimeFormat, PAYMENT_METHODS, discountLabel()
     ├── productIcon.js          # getProductIcon(): ícono emoji de respaldo (por palabra clave o categoría)
     ├── productImages.js        # getProductImage(): ilustración SVG por producto (import.meta.glob + slugify)
     ├── assets/products/*.svg   # 30 ilustraciones, una por producto, nombradas con el slug de su nombre
-    ├── styles/index.css
+    ├── assets/illustrations/*.svg  # 8 ilustraciones de estados: empty-cart, search, connection, customers, receipt, menu, loading (vapor animado), error (taza derramada)
+    ├── styles/
+    │   ├── global.css         # variables de color, reset y estilos base de body, button, input, select (se importa en main.jsx)
+    │   ├── layout.css         # layout de dos columnas compartido por las páginas (pos-main, pos-cart, order-summary)
+    │   ├── lists.css          # listas, tarjetas, precios, stock y etiquetas compartidas entre páginas
+    │   └── forms.css          # formularios, barras de búsqueda y botones de acción compartidos
+    ├── *.css junto a cada .jsx  # App.css, components/*.css y pages/*.css: los estilos propios de cada componente
     ├── components/
-    │   ├── CustomerForm.jsx   # registra un cliente (POST /api/customers) con nombre + phoneOrEmail
+    │   ├── AdminLogin.jsx     # modal de inicio de sesión del administrador (correo + contraseña)
+    │   ├── Notice.jsx         # aviso con ícono para errores (role=alert) y confirmaciones (role=status)
+    │   ├── StateMessage.jsx   # estado vacío / carga / error con ilustración, título, texto y acción; exporta LoadError
+    │   ├── PasswordInput.jsx  # input de contraseña con botón de ojo para mostrarla u ocultarla
+    │   ├── CustomerForm.jsx   # registra (POST) o edita (PUT, si recibe `customer`) un cliente: nombre + phoneOrEmail
     │   └── Ticket.jsx         # ticket visual (modal) a partir de sale.ticket; botón Imprimir
     └── pages/
         ├── Pos.jsx            # punto de venta
         ├── Customers.jsx      # clientes + historial de compras
-        └── Products.jsx       # administración de productos (solo admin)
+        ├── Products.jsx       # administración de productos (solo admin)
+        └── Admins.jsx         # lista y registro de administradores (solo admin)
 ```
 
 - `vite.config.js`: plugin de React, servidor en puerto `5173`.
-- `services/api.js`: centraliza `API_URL` (default `http://localhost:5000/api`) y `apiFetch(path, { method, body })`, que agrega `X-User-Role` y `Content-Type`, serializa `body` y, si la respuesta no es `ok`, lanza `ApiError` (con `status`, `details` y un mensaje armado con los `details[].message` del backend). El rol actual se guarda en `localStorage` (envuelto en try/catch; default `vendedor`).
-- `App.jsx`: header con el logo (`assets/products/americano.svg`), el nombre de la app, navegación con estado local `view` y un **selector de rol** (Vendedor / Administrador). La pestaña **Productos** solo aparece para admin; al cambiar de rol las páginas se remontan (`key={role}`). Sin librería de ruteo.
+- `services/api.js`: centraliza `API_URL` (default `http://localhost:5000/api`) y `apiFetch(path, { method, body })`, que agrega `Authorization: Bearer <token>` si hay sesión de admin (si no, `X-User-Role: vendedor`) y `Content-Type`, serializa `body` y, si la respuesta no es `ok`, lanza `ApiError` (con `status`, `details` y un mensaje armado con los `details[].message` del backend). Maneja la sesión: `loginAdmin(email, password)`, `logout()`, `getRole()`, `getSessionEmail()` y `onRoleChange(listener)`. La sesión (`{ token, email, expiresAt }`) se guarda en `localStorage` (envuelto en try/catch); si vence o la API responde `401`, se cierra sola y se vuelve a vendedor.
+- `App.jsx`: header con el logo (`/favicon.svg`, el mismo ícono de la pestaña), el nombre de la app, navegación con estado local `view` y un **selector de rol** (Vendedor / Administrador). Elegir Administrador abre `<AdminLogin>`; con sesión activa se muestra el correo y un botón **Cerrar sesión** (volver a Vendedor también la cierra). La pestaña **Productos** solo aparece para admin; al cambiar de rol las páginas se remontan (`key={role}`). Sin librería de ruteo.
 - `pages/Pos.jsx` — punto de venta:
   - Lista productos (`GET /products?limit=100`, usa `res.data`) como tarjetas **grandes, 3 por fila** (`pos-grid`; 2 columnas en pantallas medianas y 1 en móvil), con ilustración (`<ProductVisual>`: SVG por slug o emoji de respaldo), nombre y **stock restante** ("Quedan N", descontando lo que ya está en el carrito; "Agotado" en 0).
     - **Bebidas** (`category === "bebida"` con 3 `sizes`): 3 botones de tamaño con su precio.
@@ -229,12 +263,15 @@ frontend/
 - `pages/Customers.jsx` — clientes:
   - Búsqueda en el servidor (`GET /customers?q=&limit=100`, debounce 300ms), botón "+ Nuevo cliente" (`<CustomerForm>`). Cada cliente muestra `phoneOrEmail`, número de compras y su % de descuento.
   - Al seleccionar uno carga su historial (`GET /customers/:id/sales`): fecha, resumen de ítems (con tamaño), descuento aplicado y total; clic en una venta abre su ticket.
-  - Admin ve "Eliminar cliente" (con confirmación en línea).
+  - Botón **Editar cliente** (ambos roles, igual que `PUT /api/customers/:id`): cambia el detalle por `<CustomerForm customer={...}>` con los datos precargados; al guardar actualiza el detalle y la lista. Las ventas pasadas conservan el nombre con el que se registraron (snapshot).
+  - Admin ve además "Eliminar cliente" (con confirmación en línea).
 - `pages/Products.jsx` (solo admin): lista alfabética con ilustración, precios (por tamaño en bebidas), stock y estado; formulario lateral para crear/editar (nombre, descripción, categoría, precio o 3 tamaños con precio, stock, disponible) y eliminar con confirmación en línea. Muestra los errores `422` del backend.
-- `components/CustomerForm.jsx`: formulario controlado (nombre, correo o teléfono) → `POST /customers`; muestra el error del backend (422 o 400 duplicado) y llama a `onCreated(customer)`.
+- `components/CustomerForm.jsx`: formulario controlado (nombre, correo o teléfono) → `POST /customers`, o `PUT /customers/:id` si recibe `customer` (precarga sus datos y el botón dice "Guardar cambios"); muestra el error del backend (422 o 400 duplicado) y llama a `onSaved(customer)`.
+- `components/PasswordInput.jsx`: envuelve el `<input>` de contraseña con un botón de ojo (`aria-label` y `aria-pressed` cambian entre "Mostrar" y "Ocultar contraseña"); lo usan `<AdminLogin>` y la página Administradores.
+- `pages/Admins.jsx` (solo admin, pestaña **Administradores**): lista al principal (etiqueta "Principal", configurado en `.env`) y a los registrados (correo, fecha y quién lo registró); formulario con nombre, correo, contraseña y confirmación (valida que coincidan antes de enviar) → `POST /admins`. Cada admin registrado (salvo uno mismo) tiene botón **Eliminar** con confirmación → `DELETE /admins/:id`. Los estilos de `.admin-product-actions` viven en `styles/lists.css` porque los comparten Productos y Administradores.
 - `components/Ticket.jsx`: modal con tienda, fecha, folio (últimos 8 caracteres del `saleId`), cliente, ítems, subtotal, descuento, total y método de pago; botón **Imprimir** (`window.print()`; en `@media print` solo se imprime el ticket).
-- Estilos en `styles/index.css`: paleta neutra (beige/blanco) con un acento café (`--accent: #6b4226`), layout en dos columnas (`pos-main`) reutilizado en las tres vistas, colapsa a una columna en móvil (`max-width: 720px`). Sin librerías de UI ni CSS frameworks.
-- `index.html`: título `Cafecito`, `lang="es"`.
+- Estilos: **cada `.jsx` importa su propio `.css`** (mismo nombre, misma carpeta) y, si los usa, los compartidos de `styles/` (`layout.css`, `lists.css`, `forms.css`), en ese orden; `styles/global.css` se importa una vez en `main.jsx`. Paleta neutra (beige/blanco) con un acento café (`--accent: #6b4226`), layout en dos columnas (`pos-main`) reutilizado en las cuatro vistas, colapsa a una columna en móvil (`max-width: 720px`); el bloque `@media print` vive en `Ticket.css`. Sin librerías de UI ni CSS frameworks.
+- `index.html`: título `Cafecito`, `lang="es"` y favicon SVG `/favicon.svg` (en `public/`, Vite lo copia tal cual a `dist/`).
 - **Variables de entorno (`frontend/.env.example`):**
   ```
   VITE_API_URL=http://localhost:5000/api
@@ -242,8 +279,8 @@ frontend/
 
 ### 4. Convenciones generales
 
-- Comentarios y mensajes de usuario/API en **español**.
-- Sin TypeScript. Pruebas con `node --test` (sin frameworks); pruebas manuales de la API con `backend/ejemplos-api.http` (REST Client) o `backend/postman-collection.json` (Postman).
+- Comentarios **solo para las decisiones importantes** (requisito §8 del curso): regla de descuento, cliente duplicado o inexistente, venta todo-o-nada, transacción/500, snapshots, roles y seguridad del login, CI y scripts. Las notas de implementación no se comentan. Comentarios y mensajes de usuario/API en **español**.
+- Sin TypeScript. Pruebas unitarias e integración con `node --test` (sin frameworks); extremo a extremo con Playwright en `e2e/` (`npm run test:e2e`, base desechable `E2E_MONGODB_URI` terminada en `_test`, Edge local / Chromium en CI); pruebas manuales de la API con `backend/ejemplos-api.http` (REST Client) o `backend/postman-collection.json` (Postman).
 - **Flujo de trabajo (`CONTRIBUTING.md`):** tablero To Do / In Progress / In Review / Done con WIP máximo 2 por persona; ramas `feature/<historia>` (también `fix/`, `docs/`, `test/`) que salen de `develop` y regresan por PR (nunca push directo a `main`/`develop`); 1 historia = 1 PR; commits con prefijos `feat:`/`fix:`/`test:`/`docs:`; cómo resolver conflictos; Definition of Done de 8 puntos. Plantilla de PR en `.github/pull_request_template.md` con el checklist de la DoD.
 - **CI (`.github/workflows/ci.yml`, GitHub Actions):** en push a `main`, `develop`, `feature/**` y en PRs a `main`/`develop`, con un servicio `mongo:7`: `npm ci` → `npm test` (con `TEST_MONGODB_URI`) → `npm run build` → levantar la API y `npm run smoke`. Si un paso falla, el PR no se mergea.
 - `.env` reales nunca se commitean (están en `.gitignore`); siempre se documenta el `.env.example` correspondiente.
@@ -258,7 +295,7 @@ frontend/
 
 ### 5. Notas de despliegue / infraestructura
 
-- Base de datos: MongoDB Atlas (cluster `cafecito`, cuenta `luisferandradesan_db_user`).
+- Base de datos: MongoDB Atlas (cluster `cafecito`); el usuario y la contraseña solo viven en `backend/.env`.
 - Hay que whitelistear la IP del entorno donde corre el backend en **Atlas → Network Access**.
 - CORS del backend debe apuntar al origen real del frontend desplegado (`CORS_ORIGIN`).
 - La base de datos trae un catálogo de ejemplo tomado de un menú real de cafetería (`productos_cafeteria.csv` provisto por el usuario): 30 productos — 23 bebidas (cafés calientes, otras bebidas calientes, bebidas frías y frappés) con 3 tamaños Chico/Mediano/Grande y su propio precio cada una, y 7 alimentos con precio único (3 `snack` salados — croissant de jamón y queso, bagel, chapata de pollo — y 4 `postre` dulces — concha, muffin, brownie, pastel de zanahoria). El campo `description` de cada producto guarda su lista de ingredientes tal cual venía en el CSV. Cargado vía `POST /api/products`, junto con una lista default de 5 clientes (Ana Torres, Carlos Méndez, Laura Jiménez, Jorge Ramírez, Sofía Vargas) cargada vía `POST /api/customers`, para poder probar la UI con datos reales.
@@ -288,3 +325,14 @@ frontend/
 - **2026-10-19** — Limpieza de código: se borraron de verdad `models/Order.js` y `routes/order.routes.js` (seguían en el repo sin montarse; la migración lee la colección `orders` directamente). Se quitaron comentarios redundantes (rutas repetidas en los controllers, etc.) y exportaciones sin uso (`requireRole`, `validateProductData`, `toSaleResponse`, `API_URL`, `ApiError`). El frontend ya no duplica la regla de descuento (`previewDiscount` eliminado): usa `nextDiscountPercent` del backend. Correcciones: `GET /api/sales?customerId=<inválido>` devolvía las ventas de público general (ahora lista vacía, con prueba de integración) y los errores 4xx de Express/body-parser (ej. 413 body demasiado grande) ya no se reportan como 500.
 - **2026-10-21** — Segunda limpieza de comentarios: solo quedan los que explican un "por qué" que el código no dice (stock compartido entre tamaños, venta todo-o-nada con update condicional, carrera en el índice único, snapshots de venta, orden de las reglas de íconos, catches vacíos). Se quitaron JSDoc que repetían el nombre o la firma de la función, comentarios de permisos en rutas (ya los dicen `adminOnly`/`staff`) y la tabla de descuentos duplicada en `discount.service.js` (la regla está en el código y en este documento).
 - **2026-10-22** — Verificación contra el PDF de requisitos del curso (Kit + Sprints 0–5). Correcciones: todos los errores siguen `{ error, details: [{ field, message }] }` (antes 401/403/404/500 y varios 400 de ventas no traían `details` o `field`); la venta expone `id` además de `saleId`; el nombre de producto solo exige máximo 100 caracteres (antes mínimo 2); `POST /api/sales` usa una transacción cuando MongoDB la soporta, para que una falla de BD no deje nada guardado; `.env.example` usa `DB_CONNECTION_STRING` (sigue aceptando `MONGODB_URI`); el frontend separa `services/api.js` y `styles/index.css`; se restauraron los comentarios de decisiones importantes (regla de descuento, cliente duplicado, cliente inexistente en venta). 37 pruebas (5 unitarias + 32 de integración), probadas contra MongoDB standalone y con réplica.
+- **2026-10-29** — Favicon SVG (`frontend/public/favicon.svg`): taza crema con vapor sobre un cuadro redondeado del color de acento, diseñado para leerse a 16 px en pestañas claras y oscuras (la ilustración del Americano del header es demasiado detallada y clara para ese tamaño). También se ajustó el stock de los 30 productos de Atlas a valores aleatorios entre 40 y 60 (vía `PUT /api/products/:id`, sin cambios de código).
+- **2026-10-29** — El header usa el mismo logo que la pestaña (`/favicon.svg`) en vez de la ilustración del Americano, que sigue usándose solo en su tarjeta de producto.
+- **2026-10-29** — Inicio de sesión del administrador con correo y contraseña: `POST /api/auth/login` (`auth.service.js`, hash scrypt y token de sesión firmado con HMAC de 8 h, sin dependencias nuevas), script `npm run hash-password`, variables `ADMIN_EMAIL` / `ADMIN_PASSWORD_HASH` / `AUTH_SECRET` (solo en `backend/.env`). `X-User-Role: admin` y el token por default `dev-admin-token` ya no dan acceso de admin; `ADMIN_TOKEN` solo si se define (CI usa `ci-admin-token`). Frontend: modal `<AdminLogin>` al elegir Administrador, correo y botón *Cerrar sesión* en el header, cierre automático si el token vence. Pruebas: 9 unitarias + 37 de integración; ejemplos REST Client (39) y Postman (37) con petición de login.
+- **2026-10-29** — Ícono de ojo para mostrar u ocultar la contraseña (`PasswordInput.jsx`). Edición de clientes desde la pantalla Clientes (`CustomerForm` ahora crea o edita; usa el `PUT /api/customers/:id` que ya existía). Registro de administradores: modelo `Admin` (colección `admins`), `GET/POST /api/admins` (solo admin), login que acepta al admin principal de `.env` y a los registrados, y pestaña **Administradores** en el frontend. Pruebas: 9 unitarias + 43 de integración (52), en MongoDB standalone y con réplica.
+- **2026-10-29** — Mensajes pensados para el personal de la cafetería, sin detalles técnicos. Backend: los `details[].message` de validación y negocio se reescribieron en lenguaje claro ("Escribe el nombre del producto.", "Solo quedan 3 de Concha y la cuenta pide 5.", "Elige un tamaño para Latte."); `field` conserva el nombre técnico para la API. Frontend: `services/api.js` traduce los casos que no son de validación (sin conexión → status 0, sesión de admin vencida, 403, 404, 5xx) y ya no muestra `HTTP <status>`; se quitaron textos técnicos ("No se pudo conectar con la API", "Configurado en backend/.env"). Nuevos `<StateMessage>` (con 8 ilustraciones SVG temáticas y botón Reintentar en errores de carga) y `<Notice>` (errores y confirmaciones con ícono) reemplazan a `.pos-empty`, `.form-error` y `.pos-success`.
+- **2026-10-29** — Revisión general (funcionamiento, código muerto y seguridad). Sin código muerto (exports, archivos, SVG, clases CSS, imports y variables revisados). Seguridad: `npm audit` pasó de 4 vulnerabilidades (1 crítica, 1 alta) a 0 con `npm audit fix` y `express@^4.22.3`; la validación de correo era vulnerable a ReDoS (un correo de 100 KB bloqueaba el servidor ~5 s) y ahora usa una regex lineal con largo máximo de 254; límite de intentos de login (`middleware/loginLimiter.js`, 429 tras 5 fallos); descripción de producto limitada a 500 caracteres; avisos al arrancar si falta `ADMIN_EMAIL`/`ADMIN_PASSWORD_HASH` o, en producción, `AUTH_SECRET`. Frontend: en Clientes y en la búsqueda de clientes del POS se ignoran respuestas viejas (una petición lenta ya no muestra el historial de otro cliente). 55 pruebas (9 unitarias + 46 de integración).
+- **2026-11-04** — CSS por componente: `styles/index.css` se dividió en `global.css` (base), `layout.css`, `lists.css` y `forms.css` (compartidos) y un `.css` junto a cada `.jsx`; verificado con una comparación de estilos calculados en 9 pantallas (1 625 elementos, 0 diferencias). Para que el botón rojo de eliminar no dependa del orden de los imports, `.customer-admin-actions :where(button)` y `.admin-product-actions :where(button)` bajaron su especificidad. Se eliminaron los 58 comentarios explicativos del código (JS, JSX, CSS y CI); `.env.example` y los `###` de `ejemplos-api.http` se conservan porque son documentación de configuración y separadores de REST Client.
+- **2026-11-04** — Se restauraron los comentarios de decisiones importantes que pide el PDF (§8 «comentar las decisiones importantes, como la regla de descuento»): 43 líneas en 19 archivos del backend y CI, más la vista previa de descuento en `Pos.jsx`. Siguen fuera las notas de implementación (orden de íconos, respuestas obsoletas, `key={role}`, catches vacíos). 55/55 pruebas y build OK.
+- **2026-11-10** — Eliminación de administradores (`DELETE /api/admins/:id`, botón en la pestaña Administradores) con revocación inmediata de sus sesiones abiertas (`isActiveAdmin` en el middleware). Se quitó de este documento el usuario de Atlas, porque el repositorio es público. 3 pruebas de integración nuevas: 58 en total (9 unitarias + 49 de integración).
+- **2026-11-10** — Pruebas de extremo a extremo con Playwright (workspace `e2e/`, `npm run test:e2e`): venta a cliente VIP con ticket, venta rechazada por stock agotado y login de administrador que crea un producto vendible. `globalSetup` vacía una base `_test` y corre el seed; `webServer` levanta la API en 5100 (con `DB_CONNECTION_STRING`, que tiene prioridad sobre el `MONGODB_URI` de `.env`) y Vite en 5174. Las peticiones directas a la API usan `127.0.0.1` porque en Windows `localhost` tarda ~2 s en caer de IPv6 a IPv4. CI: pasos 6–7 (instalar Chromium y correr E2E) y artefacto `playwright-report` si fallan.
+- **2026-11-10** — Entregables de Scrum en `docs/scrum/`: backlog de 10 historias (issues #5–#14 en el tablero de GitHub Projects), 5 historias refinadas con criterios medibles, estimación (27 puntos; Sprint 1 = 19, Sprint 2 = 8), tablero/flujo/ramas/WIP, DoD de 8 puntos con plan de validación de 3 historias (verificado contra la API sembrada) y checklist de hábitos, pipeline y reflexión personal. Desde aquí cada cambio entra por rama `feature/` o `docs/` y PR hacia `develop`.

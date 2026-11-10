@@ -4,60 +4,67 @@ const { PRODUCT_CATEGORIES, DRINK_SIZES_COUNT } = require("../config/constants")
 const { validationError, notFound } = require("../utils/httpError");
 const { isValidId, escapeRegex } = require("../utils/validation");
 
+const MAX_DESCRIPTION_LENGTH = 500;
+
 const isPositiveNumber = (value) => typeof value === "number" && Number.isFinite(value) && value > 0;
 
 function validateProductData(data) {
   const details = [];
 
   if (typeof data.name !== "string" || data.name.trim().length === 0) {
-    details.push({ field: "name", message: "name es requerido" });
+    details.push({ field: "name", message: "Escribe el nombre del producto." });
   } else if (data.name.trim().length > 100) {
-    details.push({ field: "name", message: "name debe tener como máximo 100 caracteres" });
+    details.push({ field: "name", message: "El nombre puede tener máximo 100 caracteres." });
   }
 
   if (data.category !== undefined && !PRODUCT_CATEGORIES.includes(data.category)) {
     details.push({
       field: "category",
-      message: `category debe ser una de: ${PRODUCT_CATEGORIES.join(", ")}`,
+      message: "Elige una categoría de la lista.",
     });
   }
 
   if (data.category === "bebida") {
     if (!Array.isArray(data.sizes) || data.sizes.length !== DRINK_SIZES_COUNT) {
-      details.push({ field: "sizes", message: "Las bebidas necesitan exactamente 3 tamaños" });
+      details.push({ field: "sizes", message: "Las bebidas necesitan sus 3 tamaños con precio." });
     } else {
       data.sizes.forEach((size, i) => {
         if (typeof size?.name !== "string" || size.name.trim().length === 0) {
-          details.push({ field: `sizes[${i}].name`, message: "El tamaño necesita un nombre" });
+          details.push({ field: `sizes[${i}].name`, message: "Escribe el nombre de cada tamaño." });
         }
         if (!isPositiveNumber(size?.price)) {
-          details.push({ field: `sizes[${i}].price`, message: "price debe ser un número mayor a 0" });
+          details.push({ field: `sizes[${i}].price`, message: "El precio de cada tamaño debe ser mayor a $0." });
         }
       });
     }
   } else {
     if (data.price === undefined || data.price === null) {
-      details.push({ field: "price", message: "price es requerido" });
+      details.push({ field: "price", message: "Escribe el precio." });
     } else if (!isPositiveNumber(data.price)) {
-      details.push({ field: "price", message: "price debe ser un número mayor a 0" });
+      details.push({ field: "price", message: "El precio debe ser mayor a $0." });
     }
     if (Array.isArray(data.sizes) && data.sizes.length > 0) {
-      details.push({ field: "sizes", message: "Solo las bebidas usan tamaños" });
+      details.push({ field: "sizes", message: "Solo las bebidas se venden por tamaño." });
     }
   }
 
   if (data.stock === undefined || data.stock === null) {
-    details.push({ field: "stock", message: "stock es requerido" });
+    details.push({ field: "stock", message: "Escribe cuántas piezas hay en stock." });
   } else if (!Number.isInteger(data.stock) || data.stock < 0) {
-    details.push({ field: "stock", message: "stock debe ser un entero mayor o igual a 0" });
+    details.push({ field: "stock", message: "El stock debe ser un número entero, de 0 en adelante." });
   }
 
   if (data.available !== undefined && typeof data.available !== "boolean") {
-    details.push({ field: "available", message: "available debe ser true o false" });
+    details.push({ field: "available", message: "Indica si el producto está disponible." });
   }
 
   if (data.description !== undefined && typeof data.description !== "string") {
-    details.push({ field: "description", message: "description debe ser texto" });
+    details.push({ field: "description", message: "La descripción debe ser texto." });
+  } else if (data.description?.length > MAX_DESCRIPTION_LENGTH) {
+    details.push({
+      field: "description",
+      message: `La descripción puede tener máximo ${MAX_DESCRIPTION_LENGTH} caracteres.`,
+    });
   }
 
   return details;

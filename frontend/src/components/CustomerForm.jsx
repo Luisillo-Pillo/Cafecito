@@ -1,8 +1,13 @@
 import { useState } from "react";
 import { apiFetch } from "../services/api";
+import Notice from "./Notice";
+import "../styles/forms.css";
 
-function CustomerForm({ onCreated, onCancel }) {
-  const [form, setForm] = useState({ name: "", phoneOrEmail: "" });
+function CustomerForm({ customer, onSaved, onCancel }) {
+  const [form, setForm] = useState({
+    name: customer?.name ?? "",
+    phoneOrEmail: customer?.phoneOrEmail ?? "",
+  });
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -14,8 +19,11 @@ function CustomerForm({ onCreated, onCancel }) {
     setSubmitting(true);
     setError(null);
     try {
-      const customer = await apiFetch("/customers", { method: "POST", body: form });
-      onCreated(customer);
+      const saved = await apiFetch(customer ? `/customers/${customer.id}` : "/customers", {
+        method: customer ? "PUT" : "POST",
+        body: form,
+      });
+      onSaved(saved);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -40,11 +48,11 @@ function CustomerForm({ onCreated, onCancel }) {
         required
       />
 
-      {error && <p className="form-error">{error}</p>}
+      {error && <Notice>{error}</Notice>}
 
       <div className="customer-form-actions">
         <button type="submit" disabled={submitting}>
-          Guardar cliente
+          {customer ? "Guardar cambios" : "Guardar cliente"}
         </button>
         {onCancel && (
           <button type="button" onClick={onCancel}>

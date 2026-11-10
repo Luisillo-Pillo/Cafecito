@@ -30,14 +30,19 @@ function errorHandler(err, _req, res, _next) {
     const field = Object.keys(err.keyPattern ?? {})[0];
     return res.status(400).json({
       error: "Registro duplicado",
-      details: [{ field, message: `Ya existe un registro con ese ${field}` }],
+      details: [{ field, message: "Ese dato ya está registrado." }],
     });
   }
 
   console.error(err);
   res.status(500).json({
     error: "Error interno del servidor",
-    details: [{ field: null, message: "No se guardó ningún cambio; intenta de nuevo" }],
+    details: [
+      {
+        field: null,
+        message: "Algo salió mal y no se guardó ningún cambio. Intenta de nuevo en un momento.",
+      },
+    ],
   });
 }
 

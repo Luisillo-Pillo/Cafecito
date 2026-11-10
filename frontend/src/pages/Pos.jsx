@@ -2,9 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../services/api";
 import CustomerForm from "../components/CustomerForm";
 import Ticket from "../components/Ticket";
+import Notice from "../components/Notice";
+import StateMessage, { LoadError } from "../components/StateMessage";
 import { getProductIcon } from "../productIcon";
 import { getProductImage } from "../productImages";
 import { normalize, currency, PAYMENT_METHODS, discountLabel } from "../utils";
+import "../styles/layout.css";
+import "../styles/lists.css";
+import "./Pos.css";
 
 function cartKey(productId, size) {
   return `${productId}::${size ?? ""}`;
@@ -34,9 +39,10 @@ function StockLabel({ product, inCart }) {
 
 function Pos() {
   const [products, setProducts] = useState([]);
-  const [productsStatus, setProductsStatus] = useState("loading"); // loading | ready | error
+  const [productsStatus, setProductsStatus] = useState("loading");
+  const [loadError, setLoadError] = useState(null);
   const [productQuery, setProductQuery] = useState("");
-  const [cart, setCart] = useState([]); // [{ product, size, unitPrice, qty }]
+  const [cart, setCart] = useState([]);
 
   const [customerQuery, setCustomerQuery] = useState("");
   const [customerMatches, setCustomerMatches] = useState([]);
@@ -54,24 +60,36 @@ function Pos() {
         setProducts(res.data);
         setProductsStatus("ready");
       })
-      .catch(() => setProductsStatus("error"));
+      .catch((err) => {
+        setLoadError(err);
+        setProductsStatus("error");
+      });
   }, []);
 
   useEffect(() => {
     loadProducts();
   }, [loadProducts]);
 
+  const retryProducts = () => {
+    setProductsStatus("loading");
+    loadProducts();
+  };
+
   useEffect(() => {
     if (selectedCustomer || customerQuery.trim().length === 0) {
       setCustomerMatches([]);
       return;
     }
+    let stale = false;
     const timeout = setTimeout(() => {
       apiFetch(`/customers?q=${encodeURIComponent(customerQuery.trim())}&limit=8`)
-        .then((res) => setCustomerMatches(res.data))
-        .catch(() => setCustomerMatches([]));
+        .then((res) => !stale && setCustomerMatches(res.data))
+        .catch(() => !stale && setCustomerMatches([]));
     }, 300);
-    return () => clearTimeout(timeout);
+    return () => {
+      stale = true;
+      clearTimeout(timeout);
+    };
   }, [customerQuery, selectedCustomer]);
 
   // Los tamaños de una bebida comparten stock
@@ -160,7 +178,6 @@ function Pos() {
       loadProducts();
     } catch (err) {
       setCheckoutError(err.message);
-      // Un 400 suele ser stock insuficiente: refresca las existencias reales
       if (err.status === 400) loadProducts();
     } finally {
       setCheckingOut(false);
@@ -170,17 +187,21 @@ function Pos() {
   return (
     <main className="pos-main">
       <section className="pos-products">
-        {productsStatus === "loading" && <p className="pos-empty">Cargando productos...</p>}
+        {productsStatus === "loading" && (
+          <StateMessage illustration="loading" title="Preparando el menú…" />
+        )}
         {productsStatus === "error" && (
-          <p className="pos-empty">No se pudo conectar con la API.</p>
+          <LoadError error={loadError} subject="el menú" onRetry={retryProducts} />
         )}
         {productsStatus === "ready" && products.length === 0 && (
-          <p className="pos-empty">
-            Todavía no hay productos. Un administrador puede agregarlos en la pestaña Productos.
-          </p>
+          <StateMessage illustration="menu" title="El menú todavía está vacío">
+            Cuando un administrador agregue productos, aparecerán aquí para venderlos.
+          </StateMessage>
         )}
         {productsStatus === "ready" && products.length > 0 && filteredProducts.length === 0 && (
-          <p className="pos-empty">No se encontraron productos para "{productQuery}".</p>
+          <StateMessage illustration="search" title={`No encontramos «${productQuery.trim()}»`}>
+            Revisa cómo está escrito o prueba con otra palabra.
+          </StateMessage>
         )}
 
         <div className="pos-grid">
@@ -260,7 +281,9 @@ function Pos() {
         </h2>
 
         {cart.length === 0 ? (
-          <p className="pos-empty">Sin productos agregados.</p>
+          <StateMessage illustration="empty-cart" title="La cuenta está vacía" compact>
+            Toca un producto del menú para agregarlo.
+          </StateMessage>
         ) : (
           <ul className="pos-cart-list">
             {cart.map((item) => (
@@ -341,7 +364,7 @@ function Pos() {
 
               {showCustomerForm && (
                 <CustomerForm
-                  onCreated={selectCustomer}
+                  onSaved={selectCustomer}
                   onCancel={() => setShowCustomerForm(false)}
                 />
               )}
@@ -381,7 +404,7 @@ function Pos() {
           </select>
         </label>
 
-        {checkoutError && <p className="form-error">{checkoutError}</p>}
+        {checkoutError && <Notice>{checkoutError}</Notice>}
 
         <button
           className="pos-checkout"

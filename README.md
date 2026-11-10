@@ -11,7 +11,9 @@ Cafecito/
 ├── .github/         # pipeline de CI (workflows/ci.yml) y plantilla de Pull Request
 ├── backend/         # API Express (routes → controllers → services → models) + Mongoose
 ├── frontend/        # SPA React + Vite
+├── e2e/             # pruebas de extremo a extremo con Playwright
 ├── CONTRIBUTING.md  # tablero, ramas, flujo de PR y Definition of Done
+├── docs/scrum/      # entregables de Scrum de los Sprints 0 a 5
 └── package.json     # raíz del monorepo (npm workspaces)
 ```
 
@@ -38,7 +40,9 @@ DB_CONNECTION_STRING=mongodb+srv://<usuario>:<password>@<cluster>.mongodb.net/ca
 
 > Este repo ya trae un `backend/.env` local con el connection string configurado para desarrollo. No se sube a git (ver `.gitignore`).
 
-Variables opcionales del backend: `ADMIN_TOKEN` / `VENDEDOR_TOKEN` (tokens Bearer; en desarrollo valen `dev-admin-token` y `dev-vendedor-token`) y `TEST_MONGODB_URI` (base desechable para las pruebas de integración).
+**Inicio de sesión del administrador:** en `backend/.env` define `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH` y `AUTH_SECRET` (ver `.env.example`). La contraseña nunca se guarda en texto plano: genera el hash con `npm run hash-password --workspace=backend -- "<contraseña>"`.
+
+Variables opcionales del backend: `ADMIN_TOKEN` (token Bearer fijo de admin para CI/Postman; sin valor por default) / `VENDEDOR_TOKEN` (fuera de producción vale `dev-vendedor-token`) y `TEST_MONGODB_URI` (base desechable para las pruebas de integración).
 
 ## Instalación
 
@@ -70,11 +74,13 @@ npm run dev:frontend     # solo frontend
 ```bash
 npm test                 # unitarias (regla de descuento) + integración de la API
 npm run smoke --workspace=backend   # smoke test contra una API ya levantada (API_URL)
+npm run test:e2e         # extremo a extremo con Playwright (levanta API, frontend y navegador)
 ```
 
-- Las **pruebas de integración** (`backend/test/api.test.js`, 32 casos del contrato y de edge cases) solo corren si defines `TEST_MONGODB_URI` con una base **desechable** cuyo nombre termine en `_test` (ej. `mongodb://127.0.0.1:27017/cafecito_test` con Docker: `docker run -d -p 27017:27017 mongo:7`). Nunca apuntes a tu base de Atlas: las pruebas borran sus colecciones.
-- **Pruebas manuales:** `backend/ejemplos-api.http` (extensión REST Client) o `backend/postman-collection.json` (Postman → Import → Run collection; 35 requests con asserts).
-- **CI:** `.github/workflows/ci.yml` corre en GitHub Actions en cada push a `feature/**`, `develop` y `main`, y en cada PR: `npm ci` → `npm test` (con MongoDB de servicio) → `npm run build` → smoke test.
+- Las **pruebas de integración** (`backend/test/api.test.js`, 49 casos del contrato, edge cases, inicio de sesión y administradores) solo corren si defines `TEST_MONGODB_URI` con una base **desechable** cuyo nombre termine en `_test` (ej. `mongodb://127.0.0.1:27017/cafecito_test` con Docker: `docker run -d -p 27017:27017 mongo:7`). Nunca apuntes a tu base de Atlas: las pruebas borran sus colecciones. Las unitarias (`discount.test.js`, `auth.test.js`) corren siempre.
+- **Pruebas manuales:** `backend/ejemplos-api.http` (extensión REST Client; 39 requests, el login pide correo y contraseña al enviarlo) o `backend/postman-collection.json` (Postman → Import → Run collection; 37 requests con asserts; escribe `adminEmail` y `adminPassword` como *Current value* de la colección antes de correrla). El smoke test necesita `ADMIN_TOKEN` igual al de la API.
+- **Pruebas de extremo a extremo** (`e2e/`, Playwright): 3 recorridos en un navegador real — venta a un cliente VIP con 15 % y ticket, venta rechazada porque el stock se acabó antes de cobrar, y login de administrador (contraseña incorrecta y correcta) que da de alta un producto y lo vende. Levantan su propia API (puerto 5100) y frontend (5174) sobre una base desechable `E2E_MONGODB_URI` (por defecto `mongodb://127.0.0.1:27017/cafecito_e2e_test`; debe terminar en `_test`), la vacían y la llenan con el seed. Localmente usan Microsoft Edge; la primera vez en otro equipo: `npx playwright install chromium`.
+- **CI:** `.github/workflows/ci.yml` corre en GitHub Actions en cada push a `feature/**`, `develop` y `main`, y en cada PR: `npm ci` → `npm test` (con MongoDB de servicio) → `npm run build` → smoke test → pruebas E2E (si fallan, sube el reporte de Playwright como artefacto).
 
 ## Build de producción
 
@@ -87,17 +93,20 @@ npm start                # levanta el backend (Express) tal cual
 
 ## Frontend
 
-La SPA tiene un **selector de rol** en el header (Vendedor / Administrador) y tres vistas:
+La SPA tiene un **selector de rol** en el header. Por default se trabaja como **Vendedor**; al elegir **Administrador** se pide correo y contraseña, y la sesión dura 8 horas (con botón *Cerrar sesión*). Tiene tres vistas:
 
 - **Punto de venta** (ambos roles): tarjetas grandes de producto (3 por fila, con ilustración propia) con el stock restante; las bebidas muestran sus 3 tamaños con precio. El panel de cuenta es "pegajoso" (`sticky`) y tiene el buscador de productos, el carrito, el **cliente opcional** (con su nivel de descuento), subtotal/descuento/total, el **método de pago** y el botón Cobrar. Al cobrar se muestra el **ticket** (imprimible).
-- **Clientes** (ambos roles): busca y registra clientes (nombre + correo o teléfono), muestra compras y % de descuento de cada uno, y su historial con el ticket de cada venta. El admin puede eliminar clientes.
+- **Clientes** (ambos roles): busca, registra y **edita** clientes (nombre + correo o teléfono), muestra compras y % de descuento de cada uno, y su historial con el ticket de cada venta. El admin puede eliminar clientes.
+- **Administradores** (solo admin): lista de administradores y formulario para registrar uno nuevo (nombre, correo, contraseña de al menos 8 caracteres y confirmación). El admin principal es el de `backend/.env`; los demás se guardan en la base de datos con la contraseña como hash.
+
+Los estados vacíos, de carga y de error usan ilustraciones SVG propias (`frontend/src/assets/illustrations/`) y mensajes en lenguaje claro para el personal; los errores de conexión o del servidor ofrecen un botón **Reintentar**.
 - **Productos** (solo admin): crear, editar y eliminar productos (precio único o 3 tamaños para bebidas, stock, disponibilidad).
 
 ## API
 
 Base URL `http://localhost:5000/api`. Sigue el **Contrato de API del Kit de Arranque**: listas paginadas `{ data, total, page, limit }` (`?q=&page=&limit=`), errores `{ error, details: [{ field, message }] }` y cada documento expone `id`.
 
-**Autenticación (MVP):** `Authorization: Bearer <token>` (tokens `ADMIN_TOKEN` / `VENDEDOR_TOKEN`) o, en desarrollo, el header `X-User-Role: admin | vendedor` (lo usa el frontend). Sin credencial o token inválido → `401`; rol sin permiso → `403`.
+**Autenticación:** el administrador inicia sesión con `POST /api/auth/login` (`{ email, password }` → `{ token, role, email, expiresAt }`) y envía `Authorization: Bearer <token>`; también vale un `ADMIN_TOKEN` fijo si está definido en el entorno. El vendedor usa el header `X-User-Role: vendedor` (lo usa el frontend) o `Bearer <VENDEDOR_TOKEN>`. `X-User-Role: admin` ya no da acceso de admin. Sin credencial, token inválido o vencido, o credenciales incorrectas → `401`; rol sin permiso → `403`.
 
 | Endpoint | Rol |
 |---|---|
@@ -106,6 +115,8 @@ Base URL `http://localhost:5000/api`. Sigue el **Contrato de API del Kit de Arra
 | `POST /api/products`, `PUT/DELETE /api/products/:id` | admin |
 | `GET/POST /api/customers`, `GET/PUT /api/customers/:id`, `GET /api/customers/:id/sales` | vendedor, admin |
 | `DELETE /api/customers/:id` | admin |
+| `GET/POST /api/admins`, `DELETE /api/admins/:id` | admin |
+| `POST /api/auth/login` | público |
 | `POST /api/sales`, `GET /api/sales`, `GET /api/sales/:id` | vendedor, admin |
 
 **Reglas de negocio de una venta (`POST /api/sales`):**
@@ -143,4 +154,5 @@ Se trabaja con ramas `feature/<historia>` que salen de `develop` y regresan por 
 
 - [`Prompt_Inicial_Claude.md`](Prompt_Inicial_Claude.md): especificación completa del proyecto y historial de cambios.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md): tablero, ramas, PRs, conflictos y Definition of Done.
+- [`docs/scrum/`](docs/scrum/README.md): entregables de Scrum por sprint (backlog, refinamiento, estimación, tablero y ramas, plan de validación, hábitos, pipeline y reflexión). El tablero vive en GitHub Projects con las historias #5 a #14.
 - Reportar errores: abre un *issue* en el repositorio de GitHub.
