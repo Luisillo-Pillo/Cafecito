@@ -7,5 +7,6 @@ const router = Router();
 
 router.get("/", adminOnly, asyncHandler(controller.list));
 router.post("/", adminOnly, asyncHandler(controller.create));
+router.delete("/:id", adminOnly, asyncHandler(controller.remove));
 
 module.exports = router;

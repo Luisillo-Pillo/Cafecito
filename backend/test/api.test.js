@@ -552,6 +552,43 @@ describe("API de Cafecito (integración)", { skip }, () => {
       const anonimo = await api("GET", "/admins");
       assert.equal(anonimo.status, 401);
     });
+
+    it("un admin no puede eliminarse a sí mismo → 400", async () => {
+      const login = await api("POST", "/auth/login", {
+        body: { email: "mariana@cafecito.test", password: nuevo.password },
+      });
+      const { id } = (await api("GET", "/admins", { role: "admin" })).body.data[0];
+      const res = await api("DELETE", `/admins/${id}`, { token: login.body.token });
+      assert.equal(res.status, 400);
+      assert.equal(res.body.error, "No puedes eliminar tu propia cuenta");
+    });
+
+    it("eliminar un admin → 204 y su sesión abierta deja de servir (401)", async () => {
+      const login = await api("POST", "/auth/login", {
+        body: { email: "mariana@cafecito.test", password: nuevo.password },
+      });
+      const { id } = (await api("GET", "/admins", { role: "admin" })).body.data[0];
+
+      const vendedor = await api("DELETE", `/admins/${id}`, { role: "vendedor" });
+      assert.equal(vendedor.status, 403);
+
+      const res = await api("DELETE", `/admins/${id}`, { role: "admin" });
+      assert.equal(res.status, 204);
+
+      const revocada = await api("GET", "/admins", { token: login.body.token });
+      assert.equal(revocada.status, 401);
+      assert.equal(revocada.body.error, "Sesión no válida");
+
+      const otraVez = await api("POST", "/auth/login", {
+        body: { email: "mariana@cafecito.test", password: nuevo.password },
+      });
+      assert.equal(otraVez.status, 401);
+    });
+
+    it("eliminar un admin inexistente → 404", async () => {
+      const res = await api("DELETE", "/admins/000000000000000000000000", { role: "admin" });
+      assert.equal(res.status, 404);
+    });
   });
 
   describe("Errores generales", () => {

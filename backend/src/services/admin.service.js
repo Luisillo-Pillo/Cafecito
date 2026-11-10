@@ -1,6 +1,6 @@
 const Admin = require("../models/Admin");
-const { HttpError, validationError } = require("../utils/httpError");
-const { isValidEmail } = require("../utils/validation");
+const { HttpError, validationError, notFound } = require("../utils/httpError");
+const { isValidEmail, isValidId } = require("../utils/validation");
 const { hashPassword } = require("./auth.service");
 
 const MIN_PASSWORD_LENGTH = 8;
@@ -56,4 +56,15 @@ async function createAdmin(body, createdBy) {
   });
 }
 
-module.exports = { listAdmins, createAdmin };
+async function deleteAdmin(id, requestedBy) {
+  const admin = isValidId(id) ? await Admin.findById(id) : null;
+  if (!admin) throw notFound("Administrador no encontrado", id);
+  if (admin.email === requestedBy) {
+    throw new HttpError(400, "No puedes eliminar tu propia cuenta", {
+      details: [{ field: "id", message: "Pídele a otro administrador que elimine tu cuenta." }],
+    });
+  }
+  await admin.deleteOne();
+}
+
+module.exports = { listAdmins, createAdmin, deleteAdmin };
