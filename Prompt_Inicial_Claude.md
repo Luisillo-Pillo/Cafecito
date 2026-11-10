@@ -20,6 +20,7 @@ Cafecito/
 ├── backend/     # API Express + Mongoose + MongoDB Atlas (CommonJS)
 ├── frontend/    # SPA React + Vite (ESM)
 ├── e2e/         # pruebas de extremo a extremo con Playwright (workspace propio)
+├── docs/scrum/  # entregables de Scrum de los Sprints 0 a 5 (un .md por sprint)
 ├── package.json # raíz del monorepo (workspaces)
 └── README.md
 ```
@@ -334,3 +335,4 @@ frontend/
 - **2026-11-04** — Se restauraron los comentarios de decisiones importantes que pide el PDF (§8 «comentar las decisiones importantes, como la regla de descuento»): 43 líneas en 19 archivos del backend y CI, más la vista previa de descuento en `Pos.jsx`. Siguen fuera las notas de implementación (orden de íconos, respuestas obsoletas, `key={role}`, catches vacíos). 55/55 pruebas y build OK.
 - **2026-11-10** — Eliminación de administradores (`DELETE /api/admins/:id`, botón en la pestaña Administradores) con revocación inmediata de sus sesiones abiertas (`isActiveAdmin` en el middleware). Se quitó de este documento el usuario de Atlas, porque el repositorio es público. 3 pruebas de integración nuevas: 58 en total (9 unitarias + 49 de integración).
 - **2026-11-10** — Pruebas de extremo a extremo con Playwright (workspace `e2e/`, `npm run test:e2e`): venta a cliente VIP con ticket, venta rechazada por stock agotado y login de administrador que crea un producto vendible. `globalSetup` vacía una base `_test` y corre el seed; `webServer` levanta la API en 5100 (con `DB_CONNECTION_STRING`, que tiene prioridad sobre el `MONGODB_URI` de `.env`) y Vite en 5174. Las peticiones directas a la API usan `127.0.0.1` porque en Windows `localhost` tarda ~2 s en caer de IPv6 a IPv4. CI: pasos 6–7 (instalar Chromium y correr E2E) y artefacto `playwright-report` si fallan.
+- **2026-11-10** — Entregables de Scrum en `docs/scrum/`: backlog de 10 historias (issues #5–#14 en el tablero de GitHub Projects), 5 historias refinadas con criterios medibles, estimación (27 puntos; Sprint 1 = 19, Sprint 2 = 8), tablero/flujo/ramas/WIP, DoD de 8 puntos con plan de validación de 3 historias (verificado contra la API sembrada) y checklist de hábitos, pipeline y reflexión personal. Desde aquí cada cambio entra por rama `feature/` o `docs/` y PR hacia `develop`.
