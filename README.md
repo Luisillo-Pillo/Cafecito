@@ -72,11 +72,13 @@ npm run dev:frontend     # solo frontend
 ```bash
 npm test                 # unitarias (regla de descuento) + integración de la API
 npm run smoke --workspace=backend   # smoke test contra una API ya levantada (API_URL)
+npm run test:e2e         # extremo a extremo con Playwright (levanta API, frontend y navegador)
 ```
 
-- Las **pruebas de integración** (`backend/test/api.test.js`, 46 casos del contrato, edge cases, inicio de sesión y administradores) solo corren si defines `TEST_MONGODB_URI` con una base **desechable** cuyo nombre termine en `_test` (ej. `mongodb://127.0.0.1:27017/cafecito_test` con Docker: `docker run -d -p 27017:27017 mongo:7`). Nunca apuntes a tu base de Atlas: las pruebas borran sus colecciones. Las unitarias (`discount.test.js`, `auth.test.js`) corren siempre.
+- Las **pruebas de integración** (`backend/test/api.test.js`, 49 casos del contrato, edge cases, inicio de sesión y administradores) solo corren si defines `TEST_MONGODB_URI` con una base **desechable** cuyo nombre termine en `_test` (ej. `mongodb://127.0.0.1:27017/cafecito_test` con Docker: `docker run -d -p 27017:27017 mongo:7`). Nunca apuntes a tu base de Atlas: las pruebas borran sus colecciones. Las unitarias (`discount.test.js`, `auth.test.js`) corren siempre.
 - **Pruebas manuales:** `backend/ejemplos-api.http` (extensión REST Client; 39 requests, el login pide correo y contraseña al enviarlo) o `backend/postman-collection.json` (Postman → Import → Run collection; 37 requests con asserts; escribe `adminEmail` y `adminPassword` como *Current value* de la colección antes de correrla). El smoke test necesita `ADMIN_TOKEN` igual al de la API.
-- **CI:** `.github/workflows/ci.yml` corre en GitHub Actions en cada push a `feature/**`, `develop` y `main`, y en cada PR: `npm ci` → `npm test` (con MongoDB de servicio) → `npm run build` → smoke test.
+- **Pruebas de extremo a extremo** (`e2e/`, Playwright): 3 recorridos en un navegador real — venta a un cliente VIP con 15 % y ticket, venta rechazada porque el stock se acabó antes de cobrar, y login de administrador (contraseña incorrecta y correcta) que da de alta un producto y lo vende. Levantan su propia API (puerto 5100) y frontend (5174) sobre una base desechable `E2E_MONGODB_URI` (por defecto `mongodb://127.0.0.1:27017/cafecito_e2e_test`; debe terminar en `_test`), la vacían y la llenan con el seed. Localmente usan Microsoft Edge; la primera vez en otro equipo: `npx playwright install chromium`.
+- **CI:** `.github/workflows/ci.yml` corre en GitHub Actions en cada push a `feature/**`, `develop` y `main`, y en cada PR: `npm ci` → `npm test` (con MongoDB de servicio) → `npm run build` → smoke test → pruebas E2E (si fallan, sube el reporte de Playwright como artefacto).
 
 ## Build de producción
 

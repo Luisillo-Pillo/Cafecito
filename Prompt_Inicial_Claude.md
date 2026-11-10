@@ -19,6 +19,7 @@ Quiero que generes un proyecto fullstack llamado **Cafecito** (una app para gest
 Cafecito/
 ├── backend/     # API Express + Mongoose + MongoDB Atlas (CommonJS)
 ├── frontend/    # SPA React + Vite (ESM)
+├── e2e/         # pruebas de extremo a extremo con Playwright (workspace propio)
 ├── package.json # raíz del monorepo (workspaces)
 └── README.md
 ```
@@ -278,7 +279,7 @@ frontend/
 ### 4. Convenciones generales
 
 - Comentarios **solo para las decisiones importantes** (requisito §8 del curso): regla de descuento, cliente duplicado o inexistente, venta todo-o-nada, transacción/500, snapshots, roles y seguridad del login, CI y scripts. Las notas de implementación no se comentan. Comentarios y mensajes de usuario/API en **español**.
-- Sin TypeScript. Pruebas con `node --test` (sin frameworks); pruebas manuales de la API con `backend/ejemplos-api.http` (REST Client) o `backend/postman-collection.json` (Postman).
+- Sin TypeScript. Pruebas unitarias e integración con `node --test` (sin frameworks); extremo a extremo con Playwright en `e2e/` (`npm run test:e2e`, base desechable `E2E_MONGODB_URI` terminada en `_test`, Edge local / Chromium en CI); pruebas manuales de la API con `backend/ejemplos-api.http` (REST Client) o `backend/postman-collection.json` (Postman).
 - **Flujo de trabajo (`CONTRIBUTING.md`):** tablero To Do / In Progress / In Review / Done con WIP máximo 2 por persona; ramas `feature/<historia>` (también `fix/`, `docs/`, `test/`) que salen de `develop` y regresan por PR (nunca push directo a `main`/`develop`); 1 historia = 1 PR; commits con prefijos `feat:`/`fix:`/`test:`/`docs:`; cómo resolver conflictos; Definition of Done de 8 puntos. Plantilla de PR en `.github/pull_request_template.md` con el checklist de la DoD.
 - **CI (`.github/workflows/ci.yml`, GitHub Actions):** en push a `main`, `develop`, `feature/**` y en PRs a `main`/`develop`, con un servicio `mongo:7`: `npm ci` → `npm test` (con `TEST_MONGODB_URI`) → `npm run build` → levantar la API y `npm run smoke`. Si un paso falla, el PR no se mergea.
 - `.env` reales nunca se commitean (están en `.gitignore`); siempre se documenta el `.env.example` correspondiente.
@@ -332,3 +333,4 @@ frontend/
 - **2026-11-04** — CSS por componente: `styles/index.css` se dividió en `global.css` (base), `layout.css`, `lists.css` y `forms.css` (compartidos) y un `.css` junto a cada `.jsx`; verificado con una comparación de estilos calculados en 9 pantallas (1 625 elementos, 0 diferencias). Para que el botón rojo de eliminar no dependa del orden de los imports, `.customer-admin-actions :where(button)` y `.admin-product-actions :where(button)` bajaron su especificidad. Se eliminaron los 58 comentarios explicativos del código (JS, JSX, CSS y CI); `.env.example` y los `###` de `ejemplos-api.http` se conservan porque son documentación de configuración y separadores de REST Client.
 - **2026-11-04** — Se restauraron los comentarios de decisiones importantes que pide el PDF (§8 «comentar las decisiones importantes, como la regla de descuento»): 43 líneas en 19 archivos del backend y CI, más la vista previa de descuento en `Pos.jsx`. Siguen fuera las notas de implementación (orden de íconos, respuestas obsoletas, `key={role}`, catches vacíos). 55/55 pruebas y build OK.
 - **2026-11-10** — Eliminación de administradores (`DELETE /api/admins/:id`, botón en la pestaña Administradores) con revocación inmediata de sus sesiones abiertas (`isActiveAdmin` en el middleware). Se quitó de este documento el usuario de Atlas, porque el repositorio es público. 3 pruebas de integración nuevas: 58 en total (9 unitarias + 49 de integración).
+- **2026-11-10** — Pruebas de extremo a extremo con Playwright (workspace `e2e/`, `npm run test:e2e`): venta a cliente VIP con ticket, venta rechazada por stock agotado y login de administrador que crea un producto vendible. `globalSetup` vacía una base `_test` y corre el seed; `webServer` levanta la API en 5100 (con `DB_CONNECTION_STRING`, que tiene prioridad sobre el `MONGODB_URI` de `.env`) y Vite en 5174. Las peticiones directas a la API usan `127.0.0.1` porque en Windows `localhost` tarda ~2 s en caer de IPv6 a IPv4. CI: pasos 6–7 (instalar Chromium y correr E2E) y artefacto `playwright-report` si fallan.
