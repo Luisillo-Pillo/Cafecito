@@ -207,13 +207,6 @@
   cursor: not-allowed;
 }
 
-.pos-hint {
-  color: var(--muted);
-  font-size: 0.8rem;
-  margin: 0.4rem 0 0;
-  text-align: center;
-}
-
 .pos-customer {
   margin-top: 1rem;
   padding-top: 1rem;
@@ -295,10 +288,6 @@
 .pos-stock.is-out {
   color: #b3261e;
   font-weight: 600;
-}
-
-.pos-hint-left {
-  text-align: left;
 }
 
 .pos-cart-item-qty button:disabled {

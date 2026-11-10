@@ -368,10 +368,6 @@ function Pos() {
                   onCancel={() => setShowCustomerForm(false)}
                 />
               )}
-
-              <p className="pos-hint pos-hint-left">
-                Sin cliente se cobra como público general, sin descuento.
-              </p>
             </>
           )}
         </div>
